@@ -1,0 +1,316 @@
+---
+title: "Untitled"
+editor: visual
+---
+
+# Beyond the Mean: Embracing Uncertainty in Measurements with Bayesian Analysis and multilevel modeling
+
+In studies involving biological measurements, it's common to encounter data sets with multiple measurements of the same variable. These situations are common in behavioral studies, where researchers (often) measure the same variable three times. We have been taught to summarize this wealth of data by calculating the mean to provide a single, digestible number that represents the central tendency.
+
+While the mean provides a simplified picture, it potentially hides a wealth of information about the uncertainty inherent in the data. Variability is a fundamental component of biological data, reflecting the natural or measurement noise in the biological responses. In many cases, the process of averaging can mask extreme values that are part of the response and may be critical to understanding the underlying phenomena under study.
+
+Bayesian-based multilevel modeling offers a framework that naturally incorporates uncertainty into the statistical modeling process. Unlike "traditional" methods that rely on point estimates such as means, Bayesian approaches generate posterior distributions that provide a rich representation of the data and the propagating uncertainty. The probabilistic nature of this framework allows researchers to make more informed interpretations and decisions.
+
+In simple terms, Bayesian modeling allows the user to incorporate prior knowledge into the model, which can be particularly useful where data are sparse or when integrating results from different studies. This approach also elegantly handle complex models, including those with hierarchical structures, without resorting to oversimplification. Last but not least, it quantifies uncertainty through the posterior distribution.
+
+Here, we'll explore Bayesian multilevel modeling using the brms package in R with a simulated case study involving the performance of mice on a behavioral test called the rotarod.
+
+# Simulating the data
+
+We'll simulate a rotarod performance study, where each mouse is measured multiple (3) times in a single time point. Traditional analysis might average these measurements to simplify the analysis at the risk of losing valuable information. Using multilevel models, we ensure data hierarchy to make more informed decisions.
+
+The simulated dataset contains columns for the group (Control or Treatment), the animal ID, the the measurement instance, and the time spent on the rotarod.
+
+```{r}
+set.seed(8807) # 
+
+# Parameters
+n_animals <- 7 # Number of animals per group
+measurements_per_animal <- 3 # Number of measurements per animal
+groups <- c("Control", "Treatment") # Groups
+
+# Simulate data
+data <- expand.grid(Group = groups,
+                    AnimalID = 1:n_animals,
+                    Measurement = 1:measurements_per_animal)
+
+base_time_control <- runif(n_animals, min = 195, max = 195)  
+base_time_treatment <- runif(n_animals, min = 250, max = 250)  
+
+# Map base times to each animal in data
+data$BaseTime <- ifelse(data$Group == "Control", 
+                        rep(base_time_control, each = measurements_per_animal),
+                        rep(base_time_treatment, each = measurements_per_animal))
+
+# Add random noise to each measurement to increase within-animal variability
+data$TimeSpent <- data$BaseTime + rnorm(nrow(data), mean = 0, sd = 30)  
+
+# Ensure TimeSpent values are within the original intended ranges
+data$TimeSpent <- pmax(pmin(data$TimeSpent, 300), 150)
+
+# Adjust AnimalID to include group name for uniqueness across groups
+data$AnimalID <- with(data, paste(Group, AnimalID, sep = "_"))
+
+head(data)
+
+```
+
+Now, we generate a dataset to summarizing the measurements by calculating the mean
+
+```{r}
+# Calculate the average TimeSpent for each AnimalID across measurements
+averaged_data <- data %>%
+  group_by(Group, AnimalID) %>%
+  summarise(AverageTimeSpent = mean(TimeSpent), .groups = 'drop')
+
+# View the first few rows of the averaged data
+head(averaged_data)
+
+```
+
+With the simulations done, we can start with the analysis.
+
+# Exploratory data visualization (EDV)
+
+Before we begin modeling, we load the required packages. If you haven't already installed these packages, please do so.
+
+```{r}
+library(ggplot2)
+library(brms)
+library(patchwork)
+library(tidybayes)
+library(ggplot2)
+library(ggdist)
+library(modelr)
+library(dplyr)
+
+```
+
+Let's generate box plots to see what our data looks like:
+
+```{r}
+set.seed(8807) 
+
+# Plot for the averaged data set
+avergared_edv <- ggplot(averaged_data, 
+                        aes (x = Group,
+                             y = AverageTimeSpent)) +
+    geom_boxplot() +
+    geom_jitter(width = 0.2) +
+    scale_y_continuous(limits = c(150, 300)) +
+    theme_classic() +
+    theme(text = element_text(size = 30))
+
+# Plot for the complete data set
+complete_edv <- ggplot(data, 
+                        aes (x = Group,
+                             y = TimeSpent)) +
+    geom_boxplot() +
+    geom_jitter(aes(color = AnimalID), width = 0.2) +
+    theme_classic() +
+    scale_y_continuous(limits = c(150,300)) +
+    theme(legend.position = "none") +
+    theme(text = element_text(size = 30))
+    
+
+avergared_edv | complete_edv 
+```
+
+We can see that the tendency in both graphs is the same, the control group with a lower mean than the treated. However, we see that the graph with all the points has a higher uncertainty. Note that we are not respecting the hierarchy of the data here. Our task, of course, is to do better than that.
+
+# Fit the avaraged model
+
+First, we fit a traditional model using the mean of the three measurements. For this exercise, we will use the default flat priors from \`brms'. In a real modeling context, it may be wiser to choose better priors.
+
+```{r}
+# Define the Bayesian model with the average model
+Average_Fit <- brm(AverageTimeSpent ~ Group, 
+           data = averaged_data, 
+           family = gaussian(),
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/20240203_BeyondTheMean/Average_Fit.rds",
+           file_refit = "never")
+
+summary(Average_Fit)
+```
+
+In this case, let's just skip the model diagnostics and go straight to the results. But never do this in scientific research. Always validate that your model's predictions are consistent with your understanding of the world, and that your model could possibly have generated the data.
+
+The 'intercept' (192 ± 7) represents the average time spent (AverageTimeSpent) for the baseline group, which is the control group in this context. This group spent approximately 194 seconds on the rotarod. The 95% uncertainty interval ranges from 178 to 206 seconds, indicating considerable precision in this estimate.
+
+On the other hand, the 'GroupTreatment' coefficient (52 ± 10) indicates the difference in the average time spent between the treatment group and the control group. Treated animals spent on average 52 seconds more than those in the control group. The uncertainty intervals (31 to 72) indicate that it is very likely that this contrast is positive. Is it meaningful? That's something scientists should decide using scientific knowledge. Despite the current dogma of "significance" by which scientists operate, there is no coefficient that interprets data or answers scientific questions for you. That's our job as scientists. My experience with the rotarod tells me that a difference of almost a minute is quite large, relevant.
+
+I do not want to overlook the `sigma` parameter, which represents the residual standard deviation of the time spent on the rotarod, capturing the variability in the observations that is not explained by the time points or group membership. The estimate indicates that there is a small amount of scatter in the data (18 ± 3), with a confidence interval ranging from 12 to 27. Note that this unexplained variance is less than the estimated effect.
+
+Now let's plot the results of the model. We will use the \`tidybayes' package to do this. First, let's plot the full posterior distributions:
+
+```{r}
+set.seed(8807)
+
+averaged_data %>%
+  data_grid(Group) %>%
+  add_predicted_draws(Average_Fit) %>%
+  ggplot(aes(x = Group, y = .prediction, fill = Group)) +
+  stat_halfeye() +
+  geom_jitter(data = averaged_data, 
+             aes(x = Group, y = AverageTimeSpent),
+             width = 0.2,
+             size = 2)+
+  labs(title = "Posterior distribution",
+       y = "Time on the rod",
+       x = "Group") +
+  theme_classic() +
+  theme(legend.position = "top") +
+  theme(text = element_text(size = 30)) +
+  coord_flip()
+```
+
+In addition to interpreting the coefficients, the graphical results show the full posterior distributions as \`stat_halfye' and raw data points. Remember that we are dealing with a data set where we have averaged three measurements at each time point for the animals. It may be more informative to look directly at the contrast between the two groups:
+
+```{r}
+set.seed(8807)
+
+# Extracting posterior samples
+posterior_samples <- posterior_samples(Average_Fit, c("b_Intercept", "b_GroupTreatment"))
+
+# Visualizing the GroupTreatment effect
+Average_Fig <- ggplot(posterior_samples, aes(x = b_GroupTreatment)) +
+  stat_halfeye() +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red", size = 1) +
+  labs(title = "Posterior the effect size",
+       y = "Density",
+       x = "Effect Size (Treatment - Control)") +
+  scale_x_continuous(breaks = seq(0, 100, 25)) +
+  theme_classic() +
+  theme(text = element_text(size = 30)) 
+
+Average_Fig
+```
+
+The full posterior for the contrast between the two groups enable us to make more informed scientific inferences. From this angle, this model suggest that the treatment is having a prominent effect on the time the rodents spend in the rotarod.
+
+Now, let's go to the second phase, where we respect the hierarchy of the data and make use of all the information we have.
+
+# Hierarchical modeling
+
+The core of our modeling strategy is to incorporate the variability inherent in the repeated measurements at each time point. In this way, we aim to model the underlying variability directly, rather than simplifying the data by averaging. The importance of this approach is that we respect the hierarchy of the data. In our case, measurements are nested within animals.
+
+```{r}
+Complete_Fit <- brm(TimeSpent ~ Group + (1 | AnimalID), 
+           data = data, 
+           family = gaussian(),
+           chains = 4, 
+           iter = 5000, 
+           warmup = 2500,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/20240203_BeyondTheMean/Complete_Fi1.rds",
+           file_refit = "never")
+
+summary(Complete_Fit)
+```
+
+The interpretation of the main effects is similar to that of our average_data model. Here we can focus on the additional coefficient for `AnimalID`. With a value of 8 ± 5, it shows the standard deviation of the animal-specific intercepts around the overall mean. This tells us how much each animal varies from the average of all animals. I judge that a variation of 8 is not particularly meaningful for the time in the rotarod. Nevertheless, we incorporate this knowledge into our model.
+
+As before, we generate full posterior distributions, this time specifying `add_predicted_draws(re_formula = NA)` to include all random effects:
+
+```{r}
+set.seed(8807)
+
+predicted_draws <- data %>%
+  group_by(Group, AnimalID) %>% # Ensure we consider the animal-level grouping
+  add_predicted_draws(Complete_Fit, re_formula = NA) # re_formula = NA to include all random effects
+
+# Plotting
+ggplot(predicted_draws, aes(x = Group, y = .prediction, fill = Group)) +
+  stat_halfeye() + # Visualize the posterior predictive distribution
+  geom_point(data = predicted_draws %>% group_by(Group, AnimalID) %>% summarise(TimeSpent = mean(.prediction)), 
+             aes(x = Group, y = TimeSpent, color = Group), 
+             shape = 1, size = 3, show.legend = FALSE) + # Mean prediction per animal
+  geom_jitter(data = data, aes(x = Group, y = TimeSpent, color = Group),
+              width = 0.15, alpha = 0.6, size = 2) + # Actual measurements
+  labs(title = "Posterior Distribution",
+       y = "Time on the Rod",
+       x = "Group") +
+  theme_classic() +
+  theme(legend.position = "top") +
+  theme(text = element_text(size = 30)) +
+  coord_flip()
+```
+
+The estimates here are virtually identical to those of our first model. In fact, they are indistinguishable to the naked eye. We can see the same thing when we plot the contrast together with that of our first model:
+
+```{r}
+# Extract posterior samples for the treatment effect
+posterior_samples <- posterior_samples(Complete_Fit, pars = c("b_GroupTreatment"))
+
+# Convert to a data frame for ggplot
+posterior_df <- as.data.frame(posterior_samples)
+
+# Visualizing the Treatment effect size with uncertainty
+Complete_Fig <- ggplot(posterior_df, aes(x = b_GroupTreatment)) +
+  stat_halfeye() +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red", size = 1) +
+  labs(title = "Posterior for the effect size",
+       x = "Effect Size (Treatment - Control)",
+       y = "Density") +
+  scale_x_continuous(breaks = seq(0, 100, 25)) +
+  theme_classic() +
+  theme(text = element_text(size = 30))
+
+Average_Fig | Complete_Fig 
+```
+
+To visualize the group-level effects, we can consider two strategies: 1) plotting the full posterior for the group-level effects by specifying `pars = c("^sd_")` in the `posterior_samples` function:
+
+```{r}
+# Extract posterior samples for the random effect
+posterior_samples <- posterior_samples(Complete_Fit, pars = c("^sd_"))
+
+# Convert to a data frame for ggplot
+posterior_df <- as.data.frame(posterior_samples)
+
+# Visualizing the Treatment effect size with uncertainty
+AnimalID_Fig <- ggplot(posterior_df, aes(x = sd_AnimalID__Intercept)) +
+  stat_halfeye() +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red", size = 1) +
+  labs(title = "Posterior for animal variability",
+       x = "Animal (sd)",
+       y = "Density") +
+  scale_x_continuous(breaks = seq(0, 50, 10)) +
+  theme_classic() +
+  theme(text = element_text(size = 30))
+
+AnimalID_Fig
+```
+
+This reveals a hidden aspect in our \`averaged_data model'. By considering the hierarchy of the data, we reveal the variability per animal, which in this case is no greater than the effect of treatment (given the simulation parameters we used). In this way, we provide information that allows us to make more informed decisions. While the groups differ by an average of 52 seconds, the same animals can vary up to about 20 seconds (if we look at the probability density).
+
+Now let us examine the plot for individual animals:
+
+```{r}
+
+# Extracting group-level effects
+posterior_samples <- Complete_Fit %>% 
+  spread_draws(r_AnimalID[AnimalID,])  # Extract random effects for AnimalID
+
+# Plotting the group-level effects
+ggplot(posterior_samples, aes(x = r_AnimalID, y = AnimalID)) +
+  stat_halfeye(fill = "dodgerblue", color = "black") +
+  labs(title = "Group-Level Effects (AnimalID)",
+       x = "Effect Size",
+       y = "AnimalID") +
+  theme_classic() +
+  theme(text = element_text(size = 30))
+
+```
+
+So, what can we say at the end of this example? Well, for this simulation we have nearly identical intercepts (192 vs. 192), indicating that the average time spent for the control group is consistent across models. Keep in mind that this is not always the case. Here, the results is constrained by our simulation parameters. Second, we have a very close effect for treatment (51.99 vs. 52.12), meaning that the treatment group spends about 52 seconds more on the rod than the control group. In the context of the rotarod test, this is a meaningful difference.
+
+Note that in our `averaged_data1` model, we did not account for the nested structure of our data (repeated measures within animals). We treat the average per animal. On the contrary, in our multilevel model, we accounted for the nested structure of the data by including random intercepts for each AnimalID, thus recognizing that measurements within the same animal are more similar. A question may arise here: given the similar intercepts and effects for treatment, can we simply continue with the first model? I believe that accounting for the true structure of the data is fundamental to accurate modeling, regardless of the similarity of the results or how the effects move in one direction or another. If we have information, we can use it fully in our models.
+
+Now, our multilevel model estimated the standard deviation of the intercepts across animals (8) with an uncertainty interval from 0.30 to 21. This represents differences in baseline TimeSpent across animals that are not explained by the treatment effect. In fact, the increased residual variability in the multilevel model (31) indicates greater residual variability in TimeSpent after accounting for the fixed effects and random intercepts.In other words, we discovered that each animal has intrinsic variation that is not related to treatment.
+
+You can find an updated version of this post on my GitHub site (https://daniel-manrique.github.io/). Let me know if this journey has been useful to you, and if you have any constructive comments to add to this exercise.

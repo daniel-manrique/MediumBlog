@@ -1,0 +1,257 @@
+---
+title-block-banner: true
+title: "Do not over-think about 'outliers', use a student-t distribution instead"
+date: today
+date-format: full
+author: 
+  - name: "Daniel Manrique-Castano"
+    orcid: 0000-0002-1912-1764
+    affiliation: Univerisity Laval (Laboratory of neurovascular interactions) 
+keywords: 
+  - Student's-t distribution
+  - Bayesian modeling
+  - brms 
+   
+license: "CC BY"
+
+format:
+   pdf: 
+    toc: true
+    number-sections: true
+    colorlinks: true
+   html:
+    code-fold: true
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    number-sections: true
+    theme: spacelab
+
+knitr:
+  opts_chunk: 
+    warning: false
+    message: false
+    
+csl: science.csl
+bibliography: References.bib
+---
+
+For many researchers, outliers are rogue waves that can dramatically alter the course of the analysis or "confound" some expected effects. I prefer to use the term "extreme observations" and leave the concept of outlier for observations that do not really belong to the population being studied. For example, in my field (brain ischemia research), an outlier will be an animal that does not have ischemia (when it should have), while extreme observations will be animals with small or large ischemias that differ greatly from the others.
+
+Traditional (frequentists) statistical models are built on the strong foundation of Gaussian distributions. This has a significant limitation: an inherent assumption that all data points will cluster around a central mean in a predictable pattern (based on the central limit theorem). This may be true in Plato's world of ideas, but we, scientists in the biomedical field, are well aware that it is extremely difficult to rely on this assumption given the limited sampling (number of animals) we have available to make observations.
+
+Gaussian distributions are very sensitive to extreme observations, and using them makes scientists think that eliminating extreme observations is the best option to get more "clear" or "clean" results (whatever that means). As I once commented in an article being reviewer 2, "The issue is not the extreme observations that may"hide" your effects, it is the fact that you are using a statistical model that (I believe) is inappropriate for your purposes". It should be noted that no statistical model is the "right" or "appropriate" one, but we can estimate that, given the data, there are certain statistical models that are more likely to generate the observed data (generative models) than others.
+
+Fortunately, nothing forces us to be bound by the assumptions of the Gaussian models, right? We have other options, such as the **Student's t-distribution**. I see it as a more adaptable vessel to navigate the turbulent seas of real-world biomedical data. The Student's t-distribution provides a robust alternative to acknowledge that our data may be populated by extreme observations that are normal biological responses we can expect in any context. There may be patients or animals that don't respond or overreact to a treatment, and it is valuable that our modeling approach recognizes these responses as part of the spectrum. Therefore, this tutorial explores the modeling strategies using Student's t-distributions through the lens of the **`brms`** package for R---a powerful ally for Bayesian modeling.
+
+# What's behind a student's t-distribution?
+
+A Student's t-distribution is nothing more than a Gaussian distribution with heavier tails. In other words, we can say that the Gaussian distribution is a special case of the Student's t-distribution. The Gaussian distribution is defined by the mean (μ) and the standard deviation (σ). The Student t distribution, on the other hand, adds an additional parameter, the degrees of freedom (df), which controls the "thickness" of the distribution. This parameter assigns more probability to events further from the mean. This feature is particularly useful for small sample sizes, such as in biomedicine, where the assumption of normality is questionable. Note that as the degrees of freedom increase, the Student t-distribution approaches the Gaussian distribution. We can observe this in the following:
+
+```{r}
+#| label: fig-Fig1
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Comparison of Gaussian and Student t-Distributions with different degrees of freedom
+#| fig-height: 5
+#| fig-width: 5
+
+# Load necessary libraries
+library(ggplot2)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Define the distributions
+x <- seq(-4, 4, length.out = 200)
+y_gaussian <- dnorm(x)
+y_t3 <- dt(x, df = 3)
+y_t10 <- dt(x, df = 10)
+y_t30 <- dt(x, df = 30)
+
+# Create a data frame for plotting
+df <- data.frame(x, y_gaussian, y_t3, y_t10, y_t30)
+
+# Plot the distributions
+ggplot(df, aes(x)) +
+  geom_line(aes(y = y_gaussian, color = "Gaussian")) +
+  geom_line(aes(y = y_t3, color = "t, df=3")) +
+  geom_line(aes(y = y_t10, color = "t, df=10")) +
+  geom_line(aes(y = y_t30, color = "t, df=30")) +
+  labs(title = "Comparison of Gaussian and Student t-Distributions",
+       x = "Value",
+       y = "Density") +
+  scale_color_manual(values = c("Gaussian" = "blue", "t, df=3" = "red", "t, df=10" = "green", "t, df=30" = "purple")) +
+  theme_classic()
+
+```
+
+Please note in @fig-Fig1 that the hill around the mean gets smaller as the degrees of freedom decrease as a result of the probability mass going to the tails, which are thicker. This trait is the one providing the student's t-distribution a decreased sensitivity to outliers. For more details in this matter you can check [this](https://online.stat.psu.edu/stat414/lesson/26/26.4) blog.
+
+# Exploratory data visualization
+
+So, let's skip data simulations and get serious. We'll work with real data I have acquired from mice performing in the rotarod test.
+
+## Load libraries and dataset
+
+The first step is to load the dataset into our environment.
+
+```{r}
+library(bayestestR)
+library(brms)
+library(ggplot2)
+library(ggdist)
+library(ghibli)
+
+data <- read.csv("Data/Rotarod.csv")
+data$Day <- factor(data$Day, levels = c("1", "2"))
+data$Genotype <- factor(data$Genotype, levels = c("WT", "KO"))
+head(data)
+```
+
+The dataset contain IDs for the animals, a groping variable (Genotype), an indicator for two different days performing the test (Day) and different trials for the same day. For this article, we model just one of the trials (Trial3). We keep the other trials for an upcoming article on modeling variation.
+
+As the data handling implied, our modeling strategy will be based on Genotype as a (categorical) single predictor for the distribution of Trial1. I do this because in biomedical science categorical predictors, or grouping factors, are more common than continuous predictors. Scientists in this field love to divide their samples by groups or conditions and apply different treatments.
+
+## Plot the data
+
+Let's have an initial view of the data using **Raincloud plots** as show by [\@amorimfranchi](https://medium.com/@amorimfranchi) in [this](https://medium.com/@amorimfranchi/raincloud-plots-for-clear-precise-and-efficient-data-communication-4c71d0a37c23#:~:text=Raincloud%20plots%20for%20clear%2C%20precise%20and%20efficient%20data%20communication,-Guilherme%20A.&text=Raw%20data%20visualization%20involves%20presenting,quality%20assessment%20of%20your%20data.) great blog post.
+
+```{r}
+#| label: fig-Fig2
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Example density kernels for KLF4
+#| fig-height: 5
+#| fig-width: 5
+
+edv <- ggplot(data, aes(x = Day, y = Trial3, fill=Genotype)) +
+  scale_fill_ghibli_d("SpiritedMedium", direction = -1) +
+  geom_boxplot(width = 0.1,
+               outlier.color = "red") +
+  xlab('Day') +
+  ylab('Time (s)') +
+  ggtitle("Rorarod performance") +
+  theme_classic(base_size=18, base_family="serif")+
+  theme(text = element_text(size=18),
+        axis.text.x = element_text(angle=0, hjust=.5, vjust = 0.5, color = "black"),
+        axis.text.y = element_text(color = "black"),
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position="none")+
+  scale_y_continuous(breaks = seq(0, 80, by=20), 
+                     limits=c(0,90)) +
+# Line below adds dot plots from {ggdist} package 
+  stat_dots(side = "left", 
+            justification = 1.12,
+            binwidth = 1.9) +
+# Line below adds half-violin from {ggdist} package
+  stat_halfeye(adjust = .5, 
+               width = .6, 
+               justification = -.2, 
+               .width = 0, 
+               point_colour = NA)
+edv
+
+```
+
+@fig-Fig2 seems different from the original by [\@amorimfranchi](https://medium.com/@amorimfranchi) given that we are plotting two factors instead of one. Still, the nature of the representation is the same. Pay attention the the red dots, these are the ones that can be considered as extreme observation that puts the measures of central tendency (specially the mean) towards one direction. We observe as well the the variances are different, so modeling also sigma can offer better estimates. Our task now is to model the output using the `brms` package.
+
+# Implementing a student-t distributon using brms
+
+Here, we fit our model with `Day` and `Genotype` as interacting categorical predictors for the distribution of `Trial 3`. Let's fit first a typical Gaussian model that will be analogous to an ordinary least squares (OLS) model from the frequentest framework, given that we are using the default flat `brms` [priors](https://paul-buerkner.github.io/brms/reference/set_prior.html). Priors are out-of-scope for this article, but I promise we'll address them in one future blog. When we have insights from the Gaussian model, we can compare them to the great student's-t model results. After this, we incorporate `sigma` into the equation to account the difference in the variance of the data. 
+
+## Fitting a "typical" model in Gaussian land
+
+Let's fit a couple of Gaussian models assuming homoscedasticity and heteroscedasticity (predicting sigma).
+
+```{r}
+#| label: GaussianFit
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+Gaussian_Fit1 <- brm(Trial3 ~ Genotype * Day, 
+           data = data, 
+           family = gaussian(),
+           # seed for reproducibility purposes
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/20240222_OutliersStudent-t/Gaussian_Fit1.rds",
+           file_refit = "never")
+
+
+
+Gaussian_Mdl2 <- bf (Trial3 ~ Genotype * Day,
+                     sigma ~ Genotype * Day)
+
+Gaussian_Fit2 <- brm(
+           formula = Gaussian_Mdl2,
+           data = data, 
+           family = gaussian(),
+           # seed for reproducibility purposes
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/20240222_OutliersStudent-t/Gaussian_Fit2.rds",
+           file_refit = "never")
+```
+
+Let's use the `describe_posterior` function from the `bayestestR` package [@bayestestR] to see the results:
+
+```{r}
+describe_posterior(Gaussian_Fit1,
+                   centrality = "mean",
+                   dispersion = TRUE,
+                   ci_method = "HDI",
+                   test = "rope",
+                   )
+
+describe_posterior(Gaussian_Fit2,
+                   centrality = "mean",
+                   dispersion = TRUE,
+                   ci_method = "HDI",
+                   test = "rope",
+                   )
+```
+
+VOY AQUÍ DESCBRIENDO ESTOS RESULTADOS
+
+## Fitting our guest: a model with a student-t distribution
+
+```{r}
+#| label: StudentFit
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+Student_Fit <- brm(Trial3 ~ Genotype * Day, 
+           data = data, 
+           family = student,
+           # seed for reproducibility purposes
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/20240222_OutliersStudent-t/Student_Fit.rds",
+           file_refit = "never")
+```
+```{r}
+describe_posterior(Student_Fit,
+                   centrality = "mean",
+                   dispersion = TRUE,
+                   ci_method = "HDI",
+                   test = "rope",
+                   )
+```
+
+You can find an updated version of this post on my GitHub site (https://daniel-manrique.github.io/). Let me know if this journey has been useful to you, and if you have any constructive comments to add to this exercise.
+
+```{r}
+sessionInfo()
+```

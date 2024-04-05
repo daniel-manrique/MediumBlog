@@ -7,9 +7,15 @@ date-format: full
 author: 
   - name: "Daniel Manrique-Castano"
     orcid: 0000-0002-1912-1764
-    affiliation: Univerisity Laval (Laboratory of neurovascular interactions) 
+    degrees:
+      - PhD
+    affiliation: 
+      - name: Univerisity Laval 
+        department: Psychiatry and Neuroscience
+        group: Laboratory of neurovascular interactions 
+note: "GitHub: https://daniel-manrique.github.io/"
 keywords: 
-  - Student's-t distribution
+  - Ordinal regression distribution
   - Bayesian modeling
   - brms 
    
@@ -210,7 +216,7 @@ Ordinal_Fit <-
 
 Before looking at the results, let's perform a model diagnostics to compare the observation and the model predictions.
 
-### Model diagnostics
+## Model diagnostics
 
 We plot the model diagnostics as done before:
 
@@ -232,7 +238,7 @@ pp_check(Ordinal_Fit, ndraws = 100) +
 
 From @fig-OrdinalDiag1, I speculate that the uneven distribution (variance) of scores across the groups may cause such deviations. Later, we'll see if the prediction of the variance produces better estimates. For the moment, we are good to go.
 
-## Checking the results for the student-t distribution
+## Checking the results for the ordinal regression
 
 Let's take a look at the posterior distribution using the `describe_posterior` function from the `bayestestR` package [@bayestestR], as an alternative to the typical `summary` function.
 
@@ -283,9 +289,9 @@ Otherwise, the estimates we obtain for the tMCAO and tMCO_C groups are much more
 
 Can we obtain precise numbers that quantify the differences between the scores of different groups and their uncertainty? Of course we can! using the `emmeans` package [@emmeans]. However, that will be topic for another post (stay tuned).
 
-## Predicting including the variance as a response variable
+# Including the variance as a response variable
 
-For this sort of cumulative models there is no `sigma` parameter. Instead, to account for unequal variances we must emplo a parameter called `disc`. For more on this aspect, please refer to the tutorial of Ordinal regression by Paul-Christian Bürkner, the creator of `brms` [@bürkner2019].
+For this sort of cumulative models there is no `sigma` parameter. Instead, to account for unequal variances we must employ a parameter called `disc`. For more on this aspect, please refer to the tutorial of Ordinal regression by Paul-Christian Bürkner, the creator of `brms` [@bürkner2019].
 
 ```{r}
 #| label: OrdinalFit_Sigma
@@ -313,37 +319,37 @@ Ordinal_Fit2 <-
   add_criterion(Ordinal_Fit2, c("loo", "waic", "bayes_R2"))
 ```
 
-### Model diagnostics
+## Model diagnostics
 
 ```{r}
-#| label: fig-StudentDiag2
+#| label: fig-OrdinalDiag2
 #| include: true
 #| warning: false
 #| message: false
-#| fig-cap: Model diagnostics for student-t distribution with sigma
+#| fig-cap: Model diagnostics for our model predicting the variance
 #| fig-height: 4
 #| fig-width: 5
 
 set.seed(8807)
 
-pp_check(Student_Fit2, ndraws = 100) +
+pp_check(Ordinal_Fit2, ndraws = 100) +
   labs(title = "Student-t") +
   theme_classic()
 ```
 
-@fig-StudentDiag2 looks good, except for the uncomfortable predictions below 0. For this case, I judge that this does not strongly bias the estimates and their uncertainty. However, this is an aspect I will take into account when doing actual research.
+@fig-OrdinalDiag2 Indeed, my expectations were not fulfilled. Including the variance as a response in the model does not represent a better alignment of the predictions to the data. The trend is maintained but the predictions markedly vary. Still, this is a generative model candidate.
 
-### Checking the results for the student-t distribution with predicted sigma
+## Checking the results for our new model
 
-Now, let's take a look at the posterior distribution.
+We visualize the posterior distribution as done before:.
 
 ```{r}
-#| label: Student_Posterior2
+#| label: Ordinal_Posterior2
 #| include: true
 #| warning: false
 #| message: false
 
-describe_posterior(Student_Fit2,
+describe_posterior(Ordinal_Fit2,
                    centrality = "mean",
                    dispersion = TRUE,
                    ci_method = "HDI",
@@ -351,62 +357,39 @@ describe_posterior(Student_Fit2,
                    )
 ```
 
-We see more parameters compared to the other two fitted models because the response for sigma is now included as a main effect in the model. Under this scheme, we see that the intercepts are closer to those of the Gaussian model and the effect of genotype (`GenotypeKO`) is reduced by half.
+We can see a marked difference in the coefficients compared to the first model. The coefficient for "GrouptMCAO" increases form 8.6 to 15.9 and the one for "GrouptMCAO_C" upraises from 7 to 10.8. Undoubtedly, this model presents us with a different picture. Otherwise, the variance term is depicted under the names of "disc_GrouptMCAO" and "disc_GrouptMCAO_C". We see that both variances strongly differ form our base value "sham".
 
-There is one aspect to note, however. In our first Student-t model, the uncertainty for the intercept was 24.1--37.4. On the other hand, in the last model, the uncertainty increases to 24.3--46.1. This means that when we consider the different variances, we are less certain of this (and other) parameters. The same is true for day, for example, which changes from 1.2--18.9 to -5.6--18.1. In this case, we are now less certain that the second day is associated with an increase in time spent on the rotarod. Don't worry, the purpose of statistical modeling is to provide the best possible quantification of the uncertainty in a measurement, and that's what we're doing right now. Of course, our uncertainty increases when we have extreme values that are part of our sample and therefore part of our population. In this example, we see that accounting for the different variances in our data gives us a very different idea of our results.
-
-Finally, we can see that sigma, plotted on the log scale, varies meaningfully with day and genotype:
+Now, let's plot the results:
 
 ```{r}
-#| label: fig-StudentCondEffects2
+#| label: fig-OrdinalCondEffects2
 #| include: true
 #| warning: false
 #| message: false
-#| fig-cap: Conditional effects for the Student-t model with sigma
+#| fig-cap: Conditional effects for our model including the variance as a respinse
 #| fig-height: 5
 #| fig-width: 5
 #| layout-nrow: 1
 
-Student_CondEffects2 <- 
-  conditional_effects(Student_Fit2)
+Ordinal_CondEffects2 <- 
+  conditional_effects(Ordinal_Fit2, categorical = TRUE)
 
-Student_CondEffects2 <- plot(Student_CondEffects2, 
-       plot = FALSE)[[3]]
+Ordinal_CondEffects2 <- plot(Ordinal_CondEffects2, 
+       plot = FALSE)[[1]]
 
-Student_CondEffects2 + 
-  geom_point(data=data, aes(x = Day, y = Trial3, color = Genotype), inherit.aes=FALSE) +
+Ordinal_CondEffects2 +
   Plot_theme +
   theme(legend.position = "bottom", legend.direction = "horizontal")
 
-
-Student_CondEffects3 <- 
-  conditional_effects(Student_Fit2, dpar = "sigma")
-
-Student_CondEffects3 <- plot(Student_CondEffects3, 
-       plot = FALSE)[[3]]
-
-Student_CondEffects3 + 
-  Plot_theme +
-  theme(legend.position = "bottom", legend.direction = "horizontal")
 ```
 
-What we see in the second graph is sigma, which effectively accounts for the variance in this parameter between days and genotypes. We see a much higher uncertainty at day 1, especially for WT mice, while the parameter is analogous at day 2.
+Contrary to what I expected, the model still predicts that sham animals have a little probability of obtaining a score 1. What we confirmed here is that this prediction is not based on assuming (falsely) that all groups have the same variance. Nonetheless, is still a logical prediction (not irracional) under this framework (ordinal regression), which is based on thresholds. If we go to Richard McElreath's Statistical Rethinking [@mcelreath2020k] we find the same situation with monkeys pulling levers. Fitting a more restricted model will imply using informative priors. We leave that for a future post. I know, I have made three promises here but I will fulfill them.
 
-We can conclude this article by comparing the three models for out-of-sample predictions.
+In this model, the probabilities for the different scores in the tMCAO group shift slightly. Still, given the high uncertainty, I will not change my conclusion on the performance of this group based on this model. For the tMCAO_C group, on the other hand, the predictions do not shift in a way easily detectable to the eye. Let's finish this blog post by comparing the two models.
 
 ## Model comparison
 
-We perform model comparison using the WAIC criteria [@gelman2013]for estimating the out-of-sample prediction error. By considering both the log-likelihood of the observed data and the effective number of parameters, it provides a balance between model fit and complexity. Unlike some other criteria, WAIC inherently accounts for the posterior distribution of the parameters rather than relying on point estimates, making it particularly suited to Bayesian analyses.
-
-Given a data set and a Bayesian model, the WAIC is calculated as:
-
-$$
-\text{WAIC} = -2 \times \left( \text{LLPD} - p_{\text{WAIC}} \right)
-$$
-
-Where: $\text{LLPD}$ is the log pointwise predictive density, calculated as the average log likelihood for each observed data point across the posterior samples. $\text{WAIC}$ is the effective number of parameters, computed as the difference between the average of the log likelihoods and the log likelihood of the averages across posterior samples.
-
-We use the `compare_performance` function from the `performance` package, part of the `easystats` environment [@performance; @makowski2019; @bayestestR].
+We perform model comparison using the the `loo` package [@loo; @vehtari2016] for leave-one-out cross validation. For an alternative approach using the WAIC criteria [@gelman2013] I recommend you to check [this](https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c) post also publish by Towards Data Science.
 
 ```{r}
 #| label: Models_Compare
@@ -415,70 +398,14 @@ We use the `compare_performance` function from the `performance` package, part o
 #| message: false
 #| results: false
 
-Fit_Comp <- 
-  compare_performance(
-    Gaussian_Fit1, 
-    Student_Fit, 
-    Student_Fit2, 
-    metrics = "all")
-
-Fit_Comp
+loo(Ordinal_Fit, Ordinal_Fit2)
 ```
 
-The output shows that our Student-t model predicting sigma is the least penalized (WAIC = 497) for out-of-sample prediction. Note that there is no estimate for sigma in this model because it was included as a response variable. This table also shows that the student-t model has less residual variance (sigma) than the Gaussian model, which means that the variance is better explained by the predictors. We can visualize the same results as a graph:
+Under this scheme, the models have a very similar performance. Indeed, the first model is slightly better for out of sample predictions. Accounting for the variance did not help much in this specific case, where perhaps relying in informative priors can unlock the next step of scientific inference.
 
-```{r}
-#| label: fig-Models_Graph
-#| include: true
-#| warning: false
-#| message: false
-#| results: false
-#| fig-cap: Model comparison by WAIC
-#| fig-height: 5
-#| fig-width: 8
+I appreciate if you leave your comments or feedback letting me know if this journey was useful to you. If you want more quality content on data science and other topics, you may consider becoming a [medium member](https://medium.com/membership).
 
-Fit_Comp_W <- 
-loo_compare(
- Gaussian_Fit1, 
-    Student_Fit, 
-    Student_Fit2,  
-  criterion = "waic")
-
-# Generate WAIC graph
-Fit_Comp_WAIC <- 
-  Fit_Comp_W[, 7:8] %>% 
-  data.frame() %>% 
-  rownames_to_column(var = "model_name") %>% 
-  
-ggplot(
-  aes(x    = model_name, 
-      y    = waic, 
-      ymin = waic - se_waic, 
-      ymax = waic + se_waic)
-  ) +
-  geom_pointrange(shape = 21) +
-  scale_x_discrete(
-    breaks=c("Gaussian_Fit1", 
-             "Student_Fit", 
-             "Student_Fit2"), 
-            
-    labels=c("Gaussian_Fit1", 
-             "Student_Fit", 
-             "Student_Fit2") 
-             
-    ) +
-  coord_flip() +
-  labs(x = "", 
-       y = "WAIC (score)",
-       title = "") +
-  Plot_theme
-
-Fit_Comp_WAIC
-```
-
-@fig-Models_Graph shows that our last model is less penalized for out-of-sample prediction.
-
-You can find an updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/20240222_OutliersStudent-t.qmd). Let me know if this journey was useful to you, and if you have any constructive comments to add to this exercise.
+In the future, you may find an updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/2024-04-03_UseAndAbuseANOVA.qmd). 
 
 # References
 

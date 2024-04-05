@@ -3094,7 +3094,7 @@ vertical-align: -.125em;
   <div class="quarto-title-banner page-columns page-full">
     <div class="quarto-title column-body">
       <h1 class="title">Avoiding abuse and misuse of T-test and ANOVA: Regression for categorical responses</h1>
-            <p class="subtitle lead">An aproach using Bayesian regression with brms</p>
+            <p class="subtitle lead">An approach using Bayesian regression with brms</p>
                       </div>
   </div>
     
@@ -3143,7 +3143,7 @@ vertical-align: -.125em;
   <ul class="collapse">
   <li><a href="#exploratory-data-visualization" id="toc-exploratory-data-visualization" class="nav-link" data-scroll-target="#exploratory-data-visualization"><span class="header-section-number">1.1</span> Exploratory data visualization</a></li>
   </ul></li>
-  <li><a href="#fitting-an-ordinal-regression-with-brms" id="toc-fitting-an-ordinal-regression-with-brms" class="nav-link" data-scroll-target="#fitting-an-ordinal-regression-with-brms"><span class="header-section-number">2</span> Fitting an ordinal regression with brms</a>
+  <li><a href="#fitting-an-ordinal-regression-with-brms" id="toc-fitting-an-ordinal-regression-with-brms" class="nav-link" data-scroll-target="#fitting-an-ordinal-regression-with-brms"><span class="header-section-number">2</span> Fitting an Ordinal Regression with brms</a>
   <ul class="collapse">
   <li><a href="#model-diagnostics" id="toc-model-diagnostics" class="nav-link" data-scroll-target="#model-diagnostics"><span class="header-section-number">2.1</span> Model diagnostics</a></li>
   <li><a href="#checking-the-results-for-the-ordinal-regression" id="toc-checking-the-results-for-the-ordinal-regression" class="nav-link" data-scroll-target="#checking-the-results-for-the-ordinal-regression"><span class="header-section-number">2.2</span> Checking the results for the ordinal regression</a></li>
@@ -3166,8 +3166,8 @@ vertical-align: -.125em;
 
 
 
-<p>In neuroscience and other biomedical sciences, it is common to use behavioral tests to assess responses to experimental conditions or treatments. We can asses many aspects from basic motor and exploratory behaviors to memory and learning. Many of these variables are continuous (numerical) responses, i.e., they can take (finite or infinite) values in a given range. The time in the open field, the weight of the animals or the number of cells in a brain region can be considered, in general terms, as continuous numerical variables.</p>
-<p>There are, however, other types of variables we researchers record in our experiments. A very common one are ordered categorical variables, also called ordinal variables. These are categorical variables that have a natural order, analogous to the well known surveys we answer whether we agree or disagree with a statement, being 0 totally disagree and 5 totally agree. To facilitate the registration of this variables in printed or digital datasheets, we codify them (by convention) as numbers. Such is the case of the 5-point Bederson score used in the context of cerebral ischemia research in rodent models <span class="citation" data-cites="bieber2019">(<a href="#ref-bieber2019" role="doc-biblioref"><em>1</em></a>)</span>, which is coded as follows:</p>
+<p>In neuroscience and other biomedical sciences, it is common to use behavioral tests to assess responses to experimental conditions or treatments. We can assess many aspects, from basic motor and exploratory behaviors to memory and learning. Many of these variables are continuous (numerical) responses, i.e. they can take (finite or infinite) values in a given range. Time in the open field, animal weight, or the number of cells in a brain region can generally be thought of as continuous numerical variables.</p>
+<p>However, there are other types of variables that we researchers record in our experiments. A very common one is ordered categorical variables, also called ordinal variables. These are categorical variables that have a natural order, analogous to the well-known surveys in which we answer whether we agree or disagree with a statement, with 0 being strongly disagree and 5 being strongly agree. To facilitate the recording of these variables in printed or digital datasheets, we codify them (by convention) as numbers. This is the case of the 5-point Bederson score used in the context of cerebral ischemia research in rodent models <span class="citation" data-cites="bieber2019">(<a href="#ref-bieber2019" role="doc-biblioref"><em>1</em></a>)</span>, which is coded as follows:</p>
 <ul>
 <li><p>0 = no observable deficit</p></li>
 <li><p>1 = forelimb flexion</p></li>
@@ -3176,7 +3176,7 @@ vertical-align: -.125em;
 <li><p>4 = circling and spinning around the cranial-caudal axis</p></li>
 <li><p>5 = no spontaneous movement.</p></li>
 </ul>
-<p>Note that the numbers are only easy conventions. We could also use a,b,c,d,e; excellent, good, not so good, bad, very bad, almost dead; etc. I truly think it is not presumptuous to emphasize the self-evident nature of the matter . Surprisingly, however, <a href="#fig-sample" class="quarto-xref">Figure 1</a> represents a particular and widespread malpractice that scientists in this field have been carrying out for years: They use t-tests and ANOVAS to analyze such ordered categorical variables.</p>
+<p>Note that the numbers are just simple conventions. We could also use a,b,c,d,e; excellent, good, not so good, bad, very bad, almost dead; etc. I really do not think it is presumptuous to stress the self-evident nature of the matter. Surprisingly, however, <a href="#fig-sample" class="quarto-xref">Figure 1</a> represents a particular and widespread malpractice that scientists in this field have been practicing for years: They use t-tests and ANOVAS to analyze such ordered categorical variables.</p>
 <div id="fig-sample" class="quarto-figure quarto-figure-center quarto-float anchored" data-fig-align="center">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-sample-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
@@ -3187,12 +3187,12 @@ Figure 1: Left: Neurological score by Onufriev et. al (2021) (CC-BY). Right: Ne
 </figcaption>
 </figure>
 </div>
-<p>I still cannot find a logical explanation why dozens of authors, reviewers and editors feel comfortable with this scenario. This is not only logical but more importantly, it leads to distorted effect sizes, low detection rates, and type-I-error rates, among others <span class="citation" data-cites="bürkner2019">(<a href="#ref-bürkner2019" role="doc-biblioref"><em>2</em></a>)</span>.</p>
-<p>When I have played the role of reviewer 2 and emphasize this point to the authors, asking them to explain why they evaluate a categorical response with a statistical test designed to deal with continuous numerical variables, what I get is a long list of published articles that perform this irrational practice. So, after all, I have found an answer to why are they conformable with this: what Gerd Gigerenzer (2004) calls “the ritual of mindless statistics” <span class="citation" data-cites="gigerenzer2004">(<a href="#ref-gigerenzer2004" role="doc-biblioref"><em>3</em></a>)</span>. Indeed, most of us, scientists, have little idea of what we are doing with our data and simply repeat common malpractices passed down generation to generation.</p>
+<p>I still cannot find a logical explanation why dozens of authors, reviewers, and editors feel comfortable with this scenario. Not only is it not logical, but more importantly, it leads to biased effect sizes, low detection rates, and type I error rates, among other things <span class="citation" data-cites="bürkner2019">(<a href="#ref-bürkner2019" role="doc-biblioref"><em>2</em></a>)</span>.</p>
+<p>When I have played the role of reviewer 2 and emphasized this point to the authors, asking them to explain why they evaluate a categorical response with a statistical test designed to deal with continuous numerical variables, what I get is a long list of published articles that follow this irrational practice. So I finally found an answer to why they do it: what Gerd Gigerenzer (2004) calls “the ritual of mindless statistics” <span class="citation" data-cites="gigerenzer2004">(<a href="#ref-gigerenzer2004" role="doc-biblioref"><em>3</em></a>)</span>. In fact, most of us scientists have little idea what we are doing with our data, and are simply repeating common malpractices that have been passed down from generation to generation.</p>
 <p>In this article, we will then look at a more viable alternative for analyzing ordered categorical variables using <code>R</code>, <code>brms</code> <span class="citation" data-cites="brms-2">(<a href="#ref-brms-2" role="doc-biblioref"><em>4</em></a>)</span>and elements from the <code>tidyverse</code> <span class="citation" data-cites="tidyverse">(<a href="#ref-tidyverse" role="doc-biblioref"><em>5</em></a>)</span>.</p>
 <section id="facing-the-ritual-of-mindless-statistics" class="level1 page-columns page-full" data-number="1">
 <h1 data-number="1"><span class="header-section-number">1</span> Facing the ritual of mindless statistics</h1>
-<p>To avoid the ritual of mindless statistics, we’ll recreate the dataset from Liu et. al (2022) by eyeballing the data points and organize them in a table:</p>
+<p>To avoid the ritual of mindless statistics, we’ll recreate the data set from Liu et. al (2022) by eyeballing the data points and organizing them in a table:</p>
 
 <div class="no-row-height column-margin column-container"><div class="cell">
 <details class="code-fold">
@@ -3226,7 +3226,7 @@ Figure 1: Left: Neurological score by Onufriev et. al (2021) (CC-BY). Right: Ne
 5  Sham        0
 6  Sham        0</code></pre>
 </div>
-</div></div><p>If at this point you look to the R code, you will realize that the <code>Response</code> variable is identified as a number with a range from 0 to 4. Off course, we are completely aware that this response is not numeric, but and ordered (ordinal) categorical variable. So, we explicitly make the conversion:</p>
+</div></div><p>If you look at the R code at this point, you will notice that the variable `Response’ is identified as a number ranging from 0 to 4. Of course, we are fully aware that this response is not numeric, but an ordered (ordinal) categorical variable. So we do the conversion explicitly:</p>
 
 <div class="no-row-height column-margin column-container"><div class="cell">
 <details class="code-fold">
@@ -3240,10 +3240,10 @@ Figure 1: Left: Neurological score by Onufriev et. al (2021) (CC-BY). Right: Ne
  $ Group   : chr  &quot;Sham&quot; &quot;Sham&quot; &quot;Sham&quot; &quot;Sham&quot; ...
  $ Response: Ord.factor w/ 5 levels &quot;0&quot;&lt;&quot;1&quot;&lt;&quot;2&quot;&lt;&quot;3&quot;&lt;..: 1 1 1 1 1 1 1 3 3 3 ...</code></pre>
 </div>
-</div></div><p>Now, we can verify is recognized as an ordered categorical variable. With this in hand we easily proceed to visualization and modeling.</p>
+</div></div><p>Now we can verify that it is recognized as an ordered categorical variable. With this in hand, we can easily move on to visualization and modeling.</p>
 <section id="exploratory-data-visualization" class="level2" data-number="1.1">
 <h2 data-number="1.1" class="anchored" data-anchor-id="exploratory-data-visualization"><span class="header-section-number">1.1</span> Exploratory data visualization</h2>
-<p>Let’s first load the required libraries and create a visual theme for our plots.</p>
+<p>First, let’s load the necessary libraries and create a visual theme for our plots.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3282,7 +3282,7 @@ Figure 1: Left: Neurological score by Onufriev et. al (2021) (CC-BY). Right: Ne
 <span id="cb5-33"><a href="#cb5-33" aria-hidden="true" tabindex="-1"></a>      ) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<p>One straight forward manner to visualize categorical data is by means of a bar plot.</p>
+<p>A simple way to visualize categorical data is with a bar graph.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3307,13 +3307,13 @@ Figure 2: Response colored by group.
 </div>
 </div>
 </div>
-<p><a href="#fig-Fig2" class="quarto-xref">Figure 2</a> shows the frequency per group. This is more in line with the logic of a categorical variable, rather than box plots which are more relevant for continuous numerical variables. Now, let’s run a regression to disentangle the mysteries (if any) of this dataset.</p>
+<p><a href="#fig-Fig2" class="quarto-xref">Figure 2</a> shows the frequency per group. This is more in line with the logic of a categorical variable than box plots, which are more relevant for continuous numerical variables. Now let’s run a regression to unravel the mysteries (if any) of this data set.</p>
 </section>
 </section>
 <section id="fitting-an-ordinal-regression-with-brms" class="level1" data-number="2">
-<h1 data-number="2"><span class="header-section-number">2</span> Fitting an ordinal regression with brms</h1>
-<p>We’ll use <code>brms</code> to fit a <code>cumulative</code> model. This model assumes that the neurological score originates Y from the categorization of a (probably) latent (but not observable or measured) continuous variable Y˜ <span class="citation" data-cites="bürkner2019">(<a href="#ref-bürkner2019" role="doc-biblioref"><em>2</em></a>)</span>. As usual in most <code>brms</code> tutorials, I need to apologize for skipping the prior issue. Let’s assume an “I have no idea” mentality and let the default (flat) <code>brms</code> priors do the dirty job.</p>
-<p>We fit the <code>cumulative</code> model following the usual formula syntax and adding <code>cumulative(&quot;probit&quot;)</code> as a family (assuming the latent variable and corresponding error term is normally distributed.We have only one predictor variable, the experimental group each animal belongs to.</p>
+<h1 data-number="2"><span class="header-section-number">2</span> Fitting an Ordinal Regression with brms</h1>
+<p>We’ll use <code>brms</code> to fit a cumulative model. This model assumes that the neurological score Y is derived from the categorization of a (presumably) latent (but not observable or measured) continuous variable Y˜ <span class="citation" data-cites="bürkner2019">(<a href="#ref-bürkner2019" role="doc-biblioref"><em>2</em></a>)</span>. As usual in most <code>brms</code> tutorials, I must apologize for skipping the piror issue. Let’s assume an “I have no idea” mentality and let the default (flat) <code>brms</code> priors do the dirty work.</p>
+<p>We fit the <code>cumulative</code> model by following the usual formula syntax and adding <code>cumulative(&quot;probit&quot;)</code> as a family (assuming the latent variable and the corresponding error term are normally distributed. We have only one predictor variable, the experimental group to which each animal belongs.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3332,10 +3332,9 @@ Figure 2: Response colored by group.
 <span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">add_criterion</span>(Ordinal_Fit, <span class="fu">c</span>(<span class="st">&quot;loo&quot;</span>, <span class="st">&quot;waic&quot;</span>, <span class="st">&quot;bayes_R2&quot;</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<p>Before looking at the results, let’s perform a model diagnostics to compare the observation and the model predictions.</p>
+<p>Before we look at the results, let’s do some model diagnostics to compare the observations and the model predictions.</p>
 <section id="model-diagnostics" class="level2" data-number="2.1">
 <h2 data-number="2.1" class="anchored" data-anchor-id="model-diagnostics"><span class="header-section-number">2.1</span> Model diagnostics</h2>
-<p>We plot the model diagnostics as done before:</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3358,7 +3357,7 @@ Figure 3: Model diagnostics for the ordinal regression
 </div>
 </div>
 </div>
-<p>From <a href="#fig-OrdinalDiag1" class="quarto-xref">Figure 3</a>, I speculate that the uneven distribution (variance) of scores across the groups may cause such deviations. Later, we’ll see if the prediction of the variance produces better estimates. For the moment, we are good to go.</p>
+<p>From <a href="#fig-OrdinalDiag1" class="quarto-xref">Figure 3</a>, I speculate that the uneven distribution (variance) of scores across groups may cause such deviations. Later, we’ll see if predicting the variance yields better estimates. For now, we are good to go.</p>
 </section>
 <section id="checking-the-results-for-the-ordinal-regression" class="level2" data-number="2.2">
 <h2 data-number="2.2" class="anchored" data-anchor-id="checking-the-results-for-the-ordinal-regression"><span class="header-section-number">2.2</span> Checking the results for the ordinal regression</h2>
@@ -3386,9 +3385,9 @@ GrouptMCAO   | 8.68 | 3.02 | [3.70, 14.75] | [-0.10, 0.10] |        0% | 1.000 |
 GrouptMCAO_C | 7.00 | 2.96 | [2.18, 12.79] | [-0.10, 0.10] |        0% | 1.000 | 806.00</code></pre>
 </div>
 </div>
-<p>The thresholds (score thresholds) are labeled as “Intercepts” in this model, which are applicable for our base condition “sham”. The coefficients for GrouptMCAO and GrouptMCAO_C indicate the difference from sham animals on the latent Y˜ scale. Therefore, we see that GrouptMCAO presents 8.6 standard deviation higher scores on the latent Y˜ scale.</p>
-<p>I want to refer here to a crucial (and not trivial) aspect as a reminder for a future post (stay tuned). I judge that it is irrelevant to make comparisons between a group that does not have a distribution (being 0 in all the cases) like the sham group, with a group that does have a distribution (the experimental groups). If you think about it carefully, the purpose of this procedure is null. Let us, however, follow the thread of modern scientific culture and not think too much about it.</p>
-<p>Of course, appreciating the difference between the groups becomes more feasible if we look at it visually with the<code>conditional effects</code> function from <code>brms</code>.</p>
+<p>The thresholds (score thresholds) are labeled as “intercepts” in this model, which apply to our baseline “sham” condition. The coefficients for GrouptMCAO and GrouptMCAO_C indicate the difference from sham animals on the latent Y˜ scale. Thus, we see that GrouptMCAO has 8.6 standard deviations higher scores on the latent Y˜ scale.</p>
+<p>I want to point out a crucial (and not trivial) aspect here as a reminder for a future post (stay tuned). In my opinion, it is irrelevant to make comparisons between a group that does not have a distribution (which is 0 in all cases), such as the sham group, and a group that does have a distribution (the experimental groups). If you think about it carefully, the purpose of this procedure is null. But let us follow the thread of modern scientific culture and not think too much about it.</p>
+<p>Of course, appreciating the difference between the groups becomes more feasible if we look at it visually with the <code>conditional effects&#39; function of</code>brms’.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3415,14 +3414,14 @@ Figure 4: Conditional effects for the Ordinal model
 </div>
 </div>
 </div>
-<p>Strangely (or perhaps not so much from the MCMC simulation framework), the model estimates that the sham group can have values of 1, although we have not seen it in the data. The reason is, no doubt, that the model estimates a common variance for all groups. We will see if this changes when our model also includes the variance as response.</p>
-<p>Otherwise, the estimates we obtain for the tMCAO and tMCO_C groups are much more in line with the data. Thus, we can make more precise statements, instead of running an ANOVA (incorrectly for ordinal variables) and saying that there is “a significant difference” between one group and the other, which is the same as saying nothing. For example, the model tells us that scores of 2-4 for the tMCAO group have a very similar probability (about 25%). The case is different for the tMCAO_C group whose probability of 2 in the neurological score is higher (with considerable uncertainty) than for the other scores. If I were faced with this dataset and this model, I would assert that the probability that the tMCAO_C group reflects less neurological damage (based on scores 1 and 2) is higher than for the tMCAO group.</p>
-<p>Can we obtain precise numbers that quantify the differences between the scores of different groups and their uncertainty? Of course we can! using the <code>emmeans</code> package <span class="citation" data-cites="emmeans">(<a href="#ref-emmeans" role="doc-biblioref"><em>7</em></a>)</span>. However, that will be topic for another post (stay tuned).</p>
+<p>Curiously (or perhaps not so much from the MCMC simulation framework), the model estimates that the dummy group can have values of 1, although we have not seen this in the data. The reason is no doubt that the model estimates a common variance for all groups. We will see if this changes if our model also includes the variance as a response.</p>
+<p>Otherwise, the estimates we obtain for the tMCAO and tMCO_C groups are much closer to the data. This allows us to make more precise statements instead of running an ANOVA (incorrectly for ordinal variables) and saying that there is “a significant difference” between one group and the other, which is the same as saying nothing. For example, the model tells us that scores of 2-4 for the tMCAO group have a very similar probability (about 25%). The case is different for the tMCAO_C group, where the probability of 2 in the neurological score is higher (with considerable uncertainty) than for the other scores. If I were confronted with this data set and this model, I would claim that the probability that the tMCAO_C group reflects less neurological damage (based on scores 1 and 2) is higher than for the tMCAO group.</p>
+<p>Can we get precise numbers that quantify the differences between the scores of the different groups and their uncertainty? Of course we can! using the <code>emmeans</code> package <span class="citation" data-cites="emmeans">(<a href="#ref-emmeans" role="doc-biblioref"><em>7</em></a>)</span>. But that will be the subject of another post (stay tuned).</p>
 </section>
 </section>
 <section id="including-the-variance-as-a-response-variable" class="level1" data-number="3">
 <h1 data-number="3"><span class="header-section-number">3</span> Including the variance as a response variable</h1>
-<p>For this sort of cumulative models there is no <code>sigma</code> parameter. Instead, to account for unequal variances we must employ a parameter called <code>disc</code>. For more on this aspect, please refer to the tutorial of Ordinal regression by Paul-Christian Bürkner, the creator of <code>brms</code> <span class="citation" data-cites="bürkner2019">(<a href="#ref-bürkner2019" role="doc-biblioref"><em>2</em></a>)</span>.</p>
+<p>For this type of cumulative model, there is no <code>sigma</code> parameter. Instead, to account for unequal variances, we need to use a parameter called <code>disc</code>. For more on this aspect, see the Ordinal Regression tutorial by Paul-Christian Bürkner, the creator of <code>brms</code> <span class="citation" data-cites="bürkner2019">(<a href="#ref-bürkner2019" role="doc-biblioref"><em>2</em></a>)</span>.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3447,6 +3446,7 @@ Figure 4: Conditional effects for the Ordinal model
 </div>
 <section id="model-diagnostics-1" class="level2" data-number="3.1">
 <h2 data-number="3.1" class="anchored" data-anchor-id="model-diagnostics-1"><span class="header-section-number">3.1</span> Model diagnostics</h2>
+<p>We perform the model diagnostics as done previously:</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3469,11 +3469,11 @@ Figure 5: Model diagnostics for our model predicting the variance
 </div>
 </div>
 </div>
-<p><a href="#fig-OrdinalDiag2" class="quarto-xref">Figure 5</a> Indeed, my expectations were not fulfilled. Including the variance as a response in the model does not represent a better alignment of the predictions to the data. The trend is maintained but the predictions markedly vary. Still, this is a generative model candidate.</p>
+<p><a href="#fig-OrdinalDiag2" class="quarto-xref">Figure 5</a> shows that, in fact, my expectations were not met. Including the variance as a response in the model does not improve the fit of the predictions to the data. The trend is maintained, but the predictions vary significantly. Nevertheless, this is a candidate for a generative model.</p>
 </section>
 <section id="checking-the-results-for-our-new-model" class="level2" data-number="3.2">
 <h2 data-number="3.2" class="anchored" data-anchor-id="checking-the-results-for-our-new-model"><span class="header-section-number">3.2</span> Checking the results for our new model</h2>
-<p>We visualize the posterior distribution as done before:.</p>
+<p>We visualize the posterior distribution for this model:</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -3499,8 +3499,8 @@ disc_GrouptMCAO   | -1.11 | 0.95 | [-3.08,  0.76] | [-0.10, 0.10] |     3.42% | 
 disc_GrouptMCAO_C | -0.81 | 0.66 | [-2.13,  0.45] | [-0.10, 0.10] |     5.37% | 1.007 | 467.00</code></pre>
 </div>
 </div>
-<p>We can see a marked difference in the coefficients compared to the first model. The coefficient for “GrouptMCAO” increases form 8.6 to 15.9 and the one for “GrouptMCAO_C” upraises from 7 to 10.8. Undoubtedly, this model presents us with a different picture. Otherwise, the variance term is depicted under the names of “disc_GrouptMCAO” and “disc_GrouptMCAO_C”. We see that both variances strongly differ form our base value “sham”.</p>
-<p>Now, let’s plot the results:</p>
+<p>We can see a meaningful difference in the coefficients compared to the first model. The coefficient for “GrouptMCAO” increases from 8.6 to 15.9 and that for “GrouptMCAO_C” from 7 to 10.8. Undoubtedly, this model gives us a different picture. Otherwise, the variance term is presented under the names “disc_GrouptMCAO” and “disc_GrouptMCAO_C”. We can see that both variances are very different from our “sham” baseline.</p>
+<p>Let’s plot the results:</p>
 <details class="code-fold">
 <summary>Code</summary>
 <div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>Ordinal_CondEffects2 <span class="ot">&lt;-</span> </span>
@@ -3529,21 +3529,21 @@ Figure 6: Conditional effects for our model including the variance as a respins
 </div>
 </div>
 </div>
-<p>Contrary to what I expected, the model still predicts that sham animals have a little probability of obtaining a score 1. What we confirmed here is that this prediction is not based on assuming (falsely) that all groups have the same variance. Nonetheless, is still a logical prediction (not irracional) under this framework (ordinal regression), which is based on thresholds. If we go to Richard McElreath’s Statistical Rethinking <span class="citation" data-cites="mcelreath2020k">(<a href="#ref-mcelreath2020k" role="doc-biblioref"><em>8</em></a>)</span> we find the same situation with monkeys pulling levers. Fitting a more restricted model will imply using informative priors. We leave that for a future post. I know, I have made three promises here but I will fulfill them.</p>
-<p>In this model, the probabilities for the different scores in the tMCAO group shift slightly. Still, given the high uncertainty, I will not change my conclusion on the performance of this group based on this model. For the tMCAO_C group, on the other hand, the predictions do not shift in a way easily detectable to the eye. Let’s finish this blog post by comparing the two models.</p>
+<p>Contrary to what I expected, the model still predicts that sham animals have a small probability of scoring 1. What we have confirmed here is that this prediction is not based on the (false) assumption that all groups have the same variance. Nevertheless, it is still a logical prediction (not irracional) within this framework (ordinal regression) based on thresholds. If we go to Richard McElreath’s Statistical Rethinking <span class="citation" data-cites="mcelreath2020k">(<a href="#ref-mcelreath2020k" role="doc-biblioref"><em>8</em></a>)</span> we find the same situation with monkeys pulling levers. Fitting a more constrained model will require the use of informative priors. Leave that for a future post. I know I made three promises here, but I will keep them.</p>
+<p>In this model, the probabilities for the different outcomes in the tMCAO group shift slightly. However, given the high uncertainty, I will not change my conclusion about the performance of this group based on this model. For the tMCAO_C group, on the other hand, the predictions do not shift in a way that is readily apparent to the eye. Let’s conclude this blog post by comparing the two models.</p>
 </section>
 <section id="model-comparison" class="level2" data-number="3.3">
 <h2 data-number="3.3" class="anchored" data-anchor-id="model-comparison"><span class="header-section-number">3.3</span> Model comparison</h2>
-<p>We perform model comparison using the the <code>loo</code> package <span class="citation" data-cites="loo vehtari2016">(<a href="#ref-loo" role="doc-biblioref"><em>9</em></a>, <a href="#ref-vehtari2016" role="doc-biblioref"><em>10</em></a>)</span> for leave-one-out cross validation. For an alternative approach using the WAIC criteria <span class="citation" data-cites="gelman2013">(<a href="#ref-gelman2013" role="doc-biblioref"><em>11</em></a>)</span> I recommend you to check <a href="https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c">this</a> post also publish by Towards Data Science.</p>
+<p>We do the model comparison using the the <code>loo</code> package <span class="citation" data-cites="loo vehtari2016">(<a href="#ref-loo" role="doc-biblioref"><em>9</em></a>, <a href="#ref-vehtari2016" role="doc-biblioref"><em>10</em></a>)</span> for leave-one-out cross validation. For an alternative approach using the WAIC criteria <span class="citation" data-cites="gelman2013">(<a href="#ref-gelman2013" role="doc-biblioref"><em>11</em></a>)</span> I suggest you read <a href="https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c">this</a> post also published by Towards Data Science.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
 <div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">loo</span>(Ordinal_Fit, Ordinal_Fit2)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<p>Under this scheme, the models have a very similar performance. Indeed, the first model is slightly better for out of sample predictions. Accounting for the variance did not help much in this specific case, where perhaps relying in informative priors can unlock the next step of scientific inference.</p>
-<p>I appreciate if you leave your comments or feedback letting me know if this journey was useful to you. If you want more quality content on data science and other topics, you may consider becoming a <a href="https://medium.com/membership">medium member</a>.</p>
-<p>In the future, you may find an updated version of this post on my <a href="https://github.com/daniel-manrique/MediumBlog/blob/main/2024-04-03_UseAndAbuseANOVA.qmd">GitHub site</a>.</p>
+<p>Under this scheme, the models have very similar performance. In fact, the first model is slightly better for out-of-sample predictions. Accounting for variance did not help much in this particular case, where perhaps relying on informative priors can unlock the next step of scientific inference.</p>
+<p>I would appreciate your comments or feedback letting me know if this journey was useful to you. If you want more quality content on data science and other topics, you might consider becoming a <a href="https://medium.com/membership">medium member</a>.</p>
+<p>In the future, you can find an updated version of this post on my <a href="https://github.com/daniel-manrique/MediumBlog/blob/main/2024-04-03_UseAndAbuseANOVA.qmd">GitHub site</a>.</p>
 </section>
 </section>
 <section id="references" class="level1" data-number="4">

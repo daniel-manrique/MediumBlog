@@ -1,0 +1,431 @@
+---
+title-block-banner: true
+title: "Improving the analysis of cells/objects counts with zero-inflated models and brms"
+subtitle: "An approach using Bayesian regression with brms"
+date: today
+date-format: full
+author: 
+  - name: "Daniel Manrique-Castano"
+    orcid: 0000-0002-1912-1764
+    degrees:
+      - PhD
+    affiliation: 
+      - name: Univerisity Laval 
+        department: Psychiatry and Neuroscience
+        group: Laboratory of neurovascular interactions 
+note: "GitHub: https://daniel-manrique.github.io/"
+keywords: 
+  - zero-inflated models
+  - cell counts
+  - Bayesian modeling
+  - brms 
+   
+license: "CC BY"
+
+format:
+   pdf: 
+    toc: true
+    number-sections: true
+    colorlinks: true
+   html:
+    code-fold: true
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    number-sections: true
+    theme: spacelab
+
+knitr:
+  opts_chunk: 
+    warning: false
+    message: false
+    
+csl: science.csl
+bibliography: References.bib
+---
+
+# Load libraries and themes
+
+First, let's load the necessary libraries and create a visual theme for our plots.
+
+```{r}
+#| label: LoadPack
+#| include: true
+#| warning: false
+#| message: false
+
+library(ggplot2)
+library(brms)
+library(ggdist)
+library(easystats)
+library(dplyr)
+library(modelr)
+library(tibble)
+library(tidybayes)
+
+Plot_theme <- theme_classic() +
+  theme(
+      plot.title = element_text(size=18, hjust = 0.5, face="bold"),
+      plot.subtitle = element_text(size = 10, color = "black"),
+      plot.caption = element_text(size = 12, color = "black"),
+      axis.line = element_line(colour = "black", size = 1.5, linetype = "solid"),
+      axis.ticks.length=unit(7,"pt"),
+     
+      axis.title.x = element_text(colour = "black", size = 16),
+      axis.text.x = element_text(colour = "black", size = 16, angle = 0, hjust = 0.5),
+      axis.ticks.x = element_line(colour = "black", size = 1),
+      
+      axis.title.y = element_text(colour = "black", size = 16),
+      axis.text.y = element_text(colour = "black", size = 16),
+      axis.ticks.y = element_line(colour = "black", size = 1),
+      
+      legend.position="right",
+      legend.direction="vertical",
+      legend.title = element_text(colour="black", face="bold", size=12),
+      legend.text = element_text(colour="black", size=10),
+      
+      plot.margin = margin(t = 10,  # Top margin
+                             r = 2,  # Right margin
+                             b = 10,  # Bottom margin
+                             l = 10) # Left margin
+      ) 
+```
+
+One of the things we biomedical researchers do the most is count. For the past three years, one of my main tasks has been to count cells in different regions of the brain. In many scenarios, the number of cells is overwhelming, hundreds or thousands in small regions. Still, there are other circumstances where cells are low, and even we may not find any of our cells of interest. In the former case, many of us would agree that using linear models (based on a normal distribution) is an acceptable. It is usually not the case but, at least, is a logical framework. However, when the counts are close to zero, or even have many zeros, the linear model (those t-tests we run in GraphPad) become meaningless. As scientists, we can do much better, and my goal is to make this post a good starting point.
+
+# What the issue couting zeros?
+
+The following graph by [@baraibar2020] shows low cell counts, and in the case of the black group, we can estimate that the counting is dominated by 0 counts.
+
+![Left: CD3+ cells by Baraibar et. al (2020) (CC-BY). (CC-BY).](Plots/2024-04-19_CountsZeroInflated/CoutingZeros.png){#fig-sample fig-align="center"}
+
+Cases like this abound in the literature, where scientists use simple linear models for analysis. Since in most cases scientists do not share the data that support their conclusions, let's look at the problem using other data in my possession. Years ago, I counted the number of BrdU+ cells after an ischemic event in a region of the brain known as the subventricular zone (SVZ). 
+
+These are the data:
+
+```{r}
+#| label: LoadData
+#| include: true
+#| warning: false
+#| message: false
+#| column: margin
+
+Svz_data <- read.csv("Data/CellCounts.csv")
+Svz_data$Hemisphere <- factor(Svz_data$Hemisphere, levels = c("Contralateral", "Ipsilateral"))
+head(Svz_data)
+```
+We can see that the contralateral hemisphere has a lot of null cell counts. This is how it look like in a boxplot:
+
+```{r}
+#| label: fig-Fig2
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Cell counts by hemisphere.
+#| fig-height: 5
+#| fig-width: 6
+
+ggplot(Svz_data, aes(x = Hemisphere, y = Cells)) +
+  geom_boxplot() +
+  labs(x = "Hemisphere", y = "Number of cells", title = "Cells by hemisphere") +
+  Plot_theme +
+  theme(legend.position = "top", legend.direction = "horizontal")
+```
+@Fig-Fig2 shows the substantial difference between the cell counts. Now, what happens if I fit a typical linear model (based on a normal distribution) to this data? Let's see. I will fit a model with the factor variable "hemisphere" as the unique predictor of the cell counts using `brms`:
+
+```{r}
+#| label: Lm_Fit
+#| include: true
+#| warning: false
+#| message: false
+
+lm_Fit <- brm(Cells ~ Hemisphere, 
+           data = Svz_data, 
+           # seed for reproducibility purposes
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/2024-04-19_CountsZeroInflated/lm_Fit.rds",
+           file_refit = "never")
+
+# Add loo for model comparison
+lm_Fit <- 
+  add_criterion(lm_Fit, c("loo", "waic", "bayes_R2"))
+```
+Can you bet on what the results will be? Let's find out if you are right:
+
+```{r}
+#| label: Lm_Fit
+#| include: true
+#| warning: false
+#| message: false
+
+summary(lm_Fit) 
+```
+If you like, you can fit a frequentist model with `lm` and you will certainly get the same results. The intercept is the estimate in cell counts for the contralateral hemisphere, which in our case is the reference group. An inconsistency is evident. If we use a normal distribution, when the counts are very close to zero, and even have many zeros, the model is "forced" to predict that our hemisphere may have minus 1-2 cells (CI95% -1.5 - 3.7). Our model knows absolutely nothing about the nature of cells (which are objects that can only positive integer values). The model only does what we (wrongly) ask it to do: the fit a linear model to the data. Inadvertently, many researchers then use t-tests and ANOVAS to superimpose analysis on a model that is fundamentally illogical. Undoubtedly, we, researchers, have the capacity and the tools to do much better. 
+
+Let's plot the results using the great `TidyBayes` package [@tidybayes] by the great [Matthew Kay](https://www.mjskay.com/)
+
+
+```{r}
+#| label: fig-Fig3
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Posterior distribution for cells counts by hemisphere.
+#| fig-height: 5
+#| fig-width: 6
+
+Svz_data %>%
+  data_grid(Hemisphere) %>%
+  add_epred_draws(lm_Fit) %>%
+  ggplot(aes(x = .epred, y = Hemisphere)) +
+  labs(x = "Number of cells") +
+  stat_halfeye() +
+  Plot_theme
+```
+
+As a scientists I invite you to think on generative models as your main strategy to data analysis. That means, with your data, you are creating a model that could plausible have generated your data. I hope you agree with me that this linear model we generated is not a model suitable for generating our cell counts, simply because it takes impossible values below zero. Let's try to find out a better model.
+
+## Working with a lots of zeros
+
+A zero-inflated model defines a mixture of two separating processes. 1) A model that predicts whether or not the results is 0 and 2) a model that predicts the value of no zero results. In our case "Are there cells or not? if they are, how many?
+
+In our case, we'll use two different models from the zero-inflated family: `Zero_inflated_poisson` and `hurdle_lognormal`to appreciate their scope and limitations.
+
+VOY AQUI
+
+
+
+# Fitting an Ordinal Regression with brms
+
+We'll use `brms` to fit a cumulative model. This model assumes that the neurological score Y is derived from the categorization of a (presumably) latent (but not observable or measured) continuous variable Y˜ [@bürkner2019]. As usual in most `brms` tutorials, I must apologize for skipping the "priors" issue. Let's assume an "I have no idea" mentality and let the default (flat) `brms` priors do the dirty work.
+
+We fit the `cumulative` model by following the usual formula syntax and adding `cumulative("probit")` as a family (assuming the latent variable and the corresponding error term are normally distributed. We have only one predictor variable, the experimental group to which each animal belongs.
+
+```{r}
+#| label: OrdinalFit
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+Ordinal_Fit <- brm(Response ~ Group, 
+           data = df, 
+           family = cumulative("probit"),
+           # seed for reproducibility purposes
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/2024-04-03_UseAndAbuseANOVA/Ordinal_Fit.rds",
+           file_refit = "never")
+
+# Add loo for model comparison
+Ordinal_Fit <- 
+  add_criterion(Ordinal_Fit, c("loo", "waic", "bayes_R2"))
+```
+
+Before we look at the results, let's do some model diagnostics to compare the observations and the model predictions.
+
+## Model diagnostics
+
+```{r}
+#| label: fig-OrdinalDiag1
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Model diagnostics for the ordinal regression
+#| fig-height: 4
+#| fig-width: 5
+
+set.seed(8807)
+
+pp_check(Ordinal_Fit, ndraws = 100) +
+  labs(title = "Ordinal regression") +
+  theme_classic()
+```
+
+From @fig-OrdinalDiag1, I speculate that the uneven distribution (variance) of scores across groups may cause such deviations. Later, we'll see if predicting the variance yields better estimates. For now, we are good to go.
+
+## Checking the results for the ordinal regression
+
+Let's take a look at the posterior distribution using the `describe_posterior` function from the `bayestestR` package [@bayestestR], as an alternative to the typical `summary` function.
+
+```{r}
+#| label: Student_Posterior
+#| include: true
+#| warning: false
+#| message: false
+
+describe_posterior(Ordinal_Fit,
+                   centrality = "mean",
+                   dispersion = TRUE,
+                   ci_method = "HDI",
+                   test = "rope",
+                   )
+```
+
+The thresholds (score thresholds) are labeled as "intercepts" in this model, which apply to our baseline "sham" condition. The coefficients for GrouptMCAO and GrouptMCAO_C indicate the difference from sham animals on the latent Y˜ scale. Thus, we see that GrouptMCAO has 8.6 standard deviations higher scores on the latent Y˜ scale.
+
+I want to point out a crucial (and not trivial) aspect here as a reminder for a future post (stay tuned). In my opinion, it is irrelevant to make comparisons between a group that does not have a distribution (which is 0 in all cases), such as the sham group, and a group that does have a distribution (the experimental groups). If you think about it carefully, the purpose of this procedure is null. But let us follow the thread of modern scientific culture and not think too much about it.
+
+Of course, appreciating the difference between the groups becomes more feasible if we look at it visually with the `conditional effects' function of`brms'.
+
+```{r}
+#| label: fig-OrdinalEff
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Conditional effects for the Ordinal model
+#| fig-height: 5
+#| fig-width: 7
+
+
+Ordinal_CondEffects <- 
+  conditional_effects(Ordinal_Fit, "Group", categorical = TRUE)
+
+Ordinal_CondEffects <- plot(Ordinal_CondEffects, 
+       plot = FALSE)[[1]]
+
+Ordinal_CondEffects + 
+  Plot_theme +
+  theme(legend.position = "bottom", legend.direction = "horizontal")
+```
+
+Curiously (or perhaps not so much from the MCMC simulation framework), the model estimates that the dummy group can have values of 1, although we have not seen this in the data. The reason is no doubt that the model estimates a common variance for all groups. We will see if this changes if our model also includes the variance as a response.
+
+Otherwise, the estimates we obtain for the tMCAO and tMCO_C groups are much closer to the data. This allows us to make more precise statements instead of running an ANOVA (incorrectly for ordinal variables) and saying that there is "a significant difference" between one group and the other, which is the same as saying nothing. For example, the model tells us that scores of 2-4 for the tMCAO group have a very similar probability (about 25%). The case is different for the tMCAO_C group, where the probability of 2 in the neurological score is higher (with considerable uncertainty) than for the other scores. If I were confronted with this data set and this model, I would claim that the probability that the tMCAO_C group reflects less neurological damage (based on scores 1 and 2) is higher than for the tMCAO group.
+
+Can we get precise numbers that quantify the differences between the scores of the different groups and their uncertainty? Of course we can! using the `emmeans` package [@emmeans]. But that will be the subject of another post (stay tuned).
+
+# Including the variance as a response variable
+
+For this type of cumulative model, there is no `sigma` parameter. Instead, to account for unequal variances, we need to use a parameter called `disc`. For more on this aspect, see the Ordinal Regression tutorial by Paul-Christian Bürkner, the creator of `brms` [@bürkner2019].
+
+```{r}
+#| label: OrdinalFit_Sigma
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+Ordinal_Mdl2 <- bf (Response ~ Group) +
+                     lf(disc ~  0 + Group, cmc = FALSE)
+
+Ordinal_Fit2 <- brm( 
+           formula = Ordinal_Mdl2,
+           data = df, 
+           family = cumulative("probit"),
+           # seed for reproducibility purposes
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/2024-04-03_UseAndAbuseANOVA/Ordinal_Fit2.rds",
+           file_refit = "never")
+
+# Add loo for model comparison
+Ordinal_Fit2 <- 
+  add_criterion(Ordinal_Fit2, c("loo", "waic", "bayes_R2"))
+```
+
+## Model diagnostics
+
+We perform the model diagnostics as done previously:
+
+```{r}
+#| label: fig-OrdinalDiag2
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Model diagnostics for our model predicting the variance
+#| fig-height: 4
+#| fig-width: 5
+
+set.seed(8807)
+
+pp_check(Ordinal_Fit2, ndraws = 100) +
+  labs(title = "Student-t") +
+  theme_classic()
+```
+
+@fig-OrdinalDiag2 shows that, in fact, my expectations were not met. Including the variance as a response in the model does not improve the fit of the predictions to the data. The trend is maintained, but the predictions vary significantly. Nevertheless, this is a candidate for a generative model.
+
+## Checking the results for our new model
+
+We visualize the posterior distribution for this model:
+
+```{r}
+#| label: Ordinal_Posterior2
+#| include: true
+#| warning: false
+#| message: false
+
+describe_posterior(Ordinal_Fit2,
+                   centrality = "mean",
+                   dispersion = TRUE,
+                   ci_method = "HDI",
+                   test = "rope",
+                   )
+```
+
+We can see a meaningful difference in the coefficients compared to the first model. The coefficient for "GrouptMCAO" increases from 8.6 to 15.9 and that for "GrouptMCAO_C" from 7 to 10.8. Undoubtedly, this model gives us a different picture. Otherwise, the variance term is presented under the names "disc_GrouptMCAO" and "disc_GrouptMCAO_C". We can see that both variances are very different from our "sham" baseline.
+
+Let's plot the results:
+
+```{r}
+#| label: fig-OrdinalCondEffects2
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Conditional effects for our model including the variance as a response
+#| fig-height: 5
+#| fig-width: 5
+#| layout-nrow: 1
+
+Ordinal_CondEffects2 <- 
+  conditional_effects(Ordinal_Fit2, categorical = TRUE)
+
+Ordinal_CondEffects2 <- plot(Ordinal_CondEffects2, 
+       plot = FALSE)[[1]]
+
+Ordinal_CondEffects2 +
+  Plot_theme +
+  theme(legend.position = "bottom", legend.direction = "horizontal")
+
+```
+
+Contrary to what I expected, the model still predicts that sham animals have a small probability of scoring 1. What we have confirmed here is that this prediction is not based on the (false) assumption that all groups have the same variance. Nevertheless, it is still a logical prediction (not irracional) within this framework (ordinal regression) based on thresholds. If we go to Richard McElreath's Statistical Rethinking [@mcelreath2020k] we find the same situation with monkeys pulling levers. Fitting a more constrained model will require the use of informative priors. Leave that for a future post. I know I made three promises here, but I will keep them.
+
+In this model, the probabilities for the different outcomes in the tMCAO group shift slightly. However, given the high uncertainty, I will not change my conclusion about the performance of this group based on this model. For the tMCAO_C group, on the other hand, the predictions do not shift in a way that is readily apparent to the eye. Let's conclude this blog post by comparing the two models.
+
+# Model comparison
+
+We do the model comparison using the the `loo` package [@loo; @vehtari2016] for leave-one-out cross validation. For an alternative approach using the WAIC criteria [@gelman2013] I suggest you read [this](https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c) post also published by Towards Data Science.
+
+```{r}
+#| label: Models_Compare
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+loo(Ordinal_Fit, Ordinal_Fit2)
+```
+
+Under this scheme, the models have very similar performance. In fact, the first model is slightly better for out-of-sample predictions. Accounting for variance did not help much in this particular case, where perhaps relying on informative priors can unlock the next step of scientific inference.
+
+I would appreciate your comments or feedback letting me know if this journey was useful to you. If you want more quality content on data science and other topics, you might consider becoming a [medium member](https://medium.com/membership).
+
+In the future, you can find an updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/2024-04-03_UseAndAbuseANOVA.qmd).
+
+-   All images, unless otherwise stated, were generated using the displayed R code.
+
+# References
+
+::: {#refs}
+:::
+
+```{r}
+sessionInfo()
+```

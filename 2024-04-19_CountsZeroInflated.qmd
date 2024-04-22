@@ -61,6 +61,7 @@ library(ggdist)
 library(easystats)
 library(dplyr)
 library(modelr)
+library(patchwork)
 library(tibble)
 library(tidybayes)
 
@@ -100,7 +101,7 @@ The following graph by [@baraibar2020] shows low cell counts, and in the case of
 
 ![Left: CD3+ cells by Baraibar et. al (2020) (CC-BY). (CC-BY).](Plots/2024-04-19_CountsZeroInflated/CoutingZeros.png){#fig-sample fig-align="center"}
 
-Cases like this abound in the literature, where scientists use simple linear models for analysis. Since in most cases scientists do not share the data that support their conclusions, let's look at the problem using other data in my possession. Years ago, I counted the number of BrdU+ cells after an ischemic event in a region of the brain known as the subventricular zone (SVZ). 
+Cases like this abound in the literature, where scientists use simple linear models for analysis. Since in most cases scientists do not share the data that support their conclusions, let's look at the problem using other data in my possession. Years ago, I counted the number of BrdU+ cells after an ischemic event in a region of the brain known as the subventricular zone (SVZ).
 
 These are the data:
 
@@ -115,10 +116,11 @@ Svz_data <- read.csv("Data/CellCounts.csv")
 Svz_data$Hemisphere <- factor(Svz_data$Hemisphere, levels = c("Contralateral", "Ipsilateral"))
 head(Svz_data)
 ```
+
 We can see that the contralateral hemisphere has a lot of null cell counts. This is how it look like in a boxplot:
 
 ```{r}
-#| label: fig-Fig2
+#| label: fig-EDA
 #| include: true
 #| warning: false
 #| message: false
@@ -132,6 +134,7 @@ ggplot(Svz_data, aes(x = Hemisphere, y = Cells)) +
   Plot_theme +
   theme(legend.position = "top", legend.direction = "horizontal")
 ```
+
 @Fig-Fig2 shows the substantial difference between the cell counts. Now, what happens if I fit a typical linear model (based on a normal distribution) to this data? Let's see. I will fit a model with the factor variable "hemisphere" as the unique predictor of the cell counts using `brms`:
 
 ```{r}
@@ -153,6 +156,7 @@ lm_Fit <- brm(Cells ~ Hemisphere,
 lm_Fit <- 
   add_criterion(lm_Fit, c("loo", "waic", "bayes_R2"))
 ```
+
 Can you bet on what the results will be? Let's find out if you are right:
 
 ```{r}
@@ -163,13 +167,13 @@ Can you bet on what the results will be? Let's find out if you are right:
 
 summary(lm_Fit) 
 ```
-If you like, you can fit a frequentist model with `lm` and you will certainly get the same results. The intercept is the estimate in cell counts for the contralateral hemisphere, which in our case is the reference group. An inconsistency is evident. If we use a normal distribution, when the counts are very close to zero, and even have many zeros, the model is "forced" to predict that our hemisphere may have minus 1-2 cells (CI95% -1.5 - 3.7). Our model knows absolutely nothing about the nature of cells (which are objects that can only positive integer values). The model only does what we (wrongly) ask it to do: the fit a linear model to the data. Inadvertently, many researchers then use t-tests and ANOVAS to superimpose analysis on a model that is fundamentally illogical. Undoubtedly, we, researchers, have the capacity and the tools to do much better. 
+
+If you like, you can fit a frequentist model with `lm` and you will certainly get the same results. The intercept is the estimate in cell counts for the contralateral hemisphere, which in our case is the reference group. An inconsistency is evident. If we use a normal distribution, when the counts are very close to zero, and even have many zeros, the model is "forced" to predict that our hemisphere may have minus 1-2 cells (CI95% -1.5 - 3.7). Our model knows absolutely nothing about the nature of cells (which are objects that can only positive integer values). The model only does what we (wrongly) ask it to do: the fit a linear model to the data. Inadvertently, many researchers then use t-tests and ANOVAS to superimpose analysis on a model that is fundamentally illogical. Undoubtedly, we, researchers, have the capacity and the tools to do much better.
 
 Let's plot the results using the great `TidyBayes` package [@tidybayes] by the great [Matthew Kay](https://www.mjskay.com/)
 
-
 ```{r}
-#| label: fig-Fig3
+#| label: fig-LmResults
 #| include: true
 #| warning: false
 #| message: false
@@ -183,26 +187,221 @@ Svz_data %>%
   ggplot(aes(x = .epred, y = Hemisphere)) +
   labs(x = "Number of cells") +
   stat_halfeye() +
+  geom_vline(xintercept = 0) +
   Plot_theme
 ```
 
-As a scientists I invite you to think on generative models as your main strategy to data analysis. That means, with your data, you are creating a model that could plausible have generated your data. I hope you agree with me that this linear model we generated is not a model suitable for generating our cell counts, simply because it takes impossible values below zero. Let's try to find out a better model.
+We can also see this inconsistency if we perform `pp?check` to compare the observation with the model predictions>
+
+```{r}
+#| label: fig-Lm_ppchek
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Posterior predictive checks gaussian model.
+#| fig-height: 5
+#| fig-width: 6
+
+pp_check(lm_Fit, ndraws = 100) +
+  labs(title = "Gaussian regression") +
+  theme_classic()
+```
+Once again, we see irrational predictions below 0. As a scientists, I invite you to think on generative models as your main strategy to data analysis. That means, with your data, you are creating a model that could plausible have generated your data. I hope you agree with me that this linear model is not suitable for generating our cell counts; it takes impossible values below zero. Let's try to find out a better model.
 
 ## Working with a lots of zeros
 
 A zero-inflated model defines a mixture of two separating processes. 1) A model that predicts whether or not the results is 0 and 2) a model that predicts the value of no zero results. In our case "Are there cells or not? if they are, how many?
 
-In our case, we'll use two different models from the zero-inflated family: `Zero_inflated_poisson` and `hurdle_lognormal`to appreciate their scope and limitations.
+In our case, we'll use two different distribution to work with lot's of zeros: `hurdle_poisson()` and `Zero_inflated_poisson`. Both were developed for cases when regular count models (Poisson or negative binominal) turn to be unrealistic [@feng2021a]. Loosely speaking, there are two key differences between these two. First, Zero-inflated models add an additional probability mass for obtaining zeroes. An second, as a poisson model it assumes that the variability (the distribution) of the data is the same as the mean. This implies that bigger counts are linked to bigger variability. This is not the case in many scenarios. We'll see the impact it has in our modeling strategy using `brms`.  
 
-VOY AQUI
+# Fitting a hurdle_poisson model
+
+Let's start by using the `hurdle_poisson()` distribution in our modeling scheme: 
+
+```{r}
+#| label: HurdleFit
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+Hurdle_Fit1 <- brm(Cells ~ Hemisphere, 
+           data = Svz_data, 
+           family = hurdle_poisson(),
+           # seed for reproducibility purposes
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/2024-04-19_CountsZeroInflated/Hurdle_Fit1.rds",
+           file_refit = "never")
+
+# Add loo for model comparison
+Hurdle_Fit1 <- 
+  add_criterion(Hurdle_Fit1, c("loo", "waic", "bayes_R2"))
+```
+Let's see the results using the standard summary function.
+
+```{r}
+#| label: HurdleFit_Results
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+summary(Hurdle_Fit1)
+
+```
+
+Given the nature o the family distribution, the estimates are shown in the log scale (mu = log). The results show that the number of cells in the contralateral SVZ is exp(1.11) = 3.03. Otherwise, the ipsilateral hemisphere has about exp(1.07) = 2.91 times the number of cells. These sound logical. Now, the `hu` parameter under "Family Specific Parameters" indicates that there is a 38% probability of of observing a zero cell cunts. We'll dig a bit more in this but let's first plot the results using the great `conditional_effects` function. 
+
+```{r}
+#| label: fig-HurdleCE
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Conditional effects for the hurdle fit.
+#| fig-height: 5
+#| fig-width: 10
+
+Hurdle_CE <- 
+  conditional_effects(Hurdle_Fit1)
+
+Hurdle_CE <- plot(Hurdle_CE, 
+       plot = FALSE)[[1]]
+
+Hurdle_Com <- Hurdle_CE + 
+  Plot_theme +
+  theme(legend.position = "bottom", legend.direction = "horizontal")
 
 
+Hurdle_CE_hu <- 
+  conditional_effects(Hurdle_Fit1, dpar = "hu")
 
-# Fitting an Ordinal Regression with brms
+Hurdle_CE_hu <- plot(Hurdle_CE_hu, 
+       plot = FALSE)[[1]]
 
-We'll use `brms` to fit a cumulative model. This model assumes that the neurological score Y is derived from the categorization of a (presumably) latent (but not observable or measured) continuous variable Y˜ [@bürkner2019]. As usual in most `brms` tutorials, I must apologize for skipping the "priors" issue. Let's assume an "I have no idea" mentality and let the default (flat) `brms` priors do the dirty work.
+Hurdle_hu <- Hurdle_CE_hu + 
+  Plot_theme +
+  theme(legend.position = "bottom", legend.direction = "horizontal")
 
-We fit the `cumulative` model by following the usual formula syntax and adding `cumulative("probit")` as a family (assuming the latent variable and the corresponding error term are normally distributed. We have only one predictor variable, the experimental group to which each animal belongs.
+Hurdle_Com | Hurdle_hu
+```
+
+Now, the visualization seems more logical when we combine the two parts of the model ("mu" and "hu") (left). If this model is more consistent, we must see also more aligned prediction when using pp_check:
+
+```{r}
+#| label: fig-Hurdel_CE
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Posterior predictive checks hurdle model.
+#| fig-height: 5
+#| fig-width: 6
+
+pp_check(Hurdle_Fit1, ndraws = 100) +
+  labs(title = "Hurdle regression") +
+  theme_classic()
+```
+
+As expected, our model predictions have a lower boundary at 0. 
+
+Now, looking at the right graph in @fig-HurdleCE we see something that does not align with out knowledge of the subject. We now that the probability of having non-zero cunts in the SVZ of the ipsilateral hemisphere should be higher than in the contralateral. Our knowledge of the subject indicates that after an injury, the SVZ of the injured hemisphere (ipsilateral) becomes a cradle of cells where cell proliferation is abundant.As we saw in cell counts, in this region all counts are different from zero.This is one way in which scientific knowledge guides our statistical inferences. It is impractical to perform t-tests and ANOVAS without any consideration.So, can we build a more accurate model? I bet we can, and we do so by modeling also the "hu" part of the model:
+
+```{r}
+#| label: HurdleFit2
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+Hurdle_Mdl2 <- bf(Cells ~ Hemisphere, 
+                   hu ~ Hemisphere)
+  
+Hurdle_Fit2 <- brm(
+           formula = Hurdle_Mdl2,
+           data = Svz_data, 
+           family = hurdle_poisson(),
+           # seed for reproducibility purposes
+           seed = 8807,
+           control = list(adapt_delta = 0.99),
+           # this is to save the model in my laptop
+           file    = "Models/2024-04-19_CountsZeroInflated/Hurdle_Fit2.rds",
+           file_refit = "never")
+           
+
+# Add loo for model comparison
+Hurdle_Fit2 <- 
+  add_criterion(Hurdle_Fit2, c("loo", "waic", "bayes_R2"))
+```
+
+Let's see first if the results graph aligns with out hypothesis:
+
+```{r}
+#| label: fig-HurdleCE
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Conditional effects for the hurdle fit.
+#| fig-height: 5
+#| fig-width: 10
+
+Hurdle_CE <- 
+  conditional_effects(Hurdle_Fit2)
+
+Hurdle_CE <- plot(Hurdle_CE, 
+       plot = FALSE)[[1]]
+
+Hurdle_Com <- Hurdle_CE + 
+  Plot_theme +
+  theme(legend.position = "bottom", legend.direction = "horizontal")
+
+
+Hurdle_CE_hu <- 
+  conditional_effects(Hurdle_Fit2, dpar = "hu")
+
+Hurdle_CE_hu <- plot(Hurdle_CE_hu, 
+       plot = FALSE)[[1]]
+
+Hurdle_hu <- Hurdle_CE_hu + 
+  Plot_theme +
+  theme(legend.position = "bottom", legend.direction = "horizontal")
+
+Hurdle_Com | Hurdle_hu
+```
+
+I truly believe this model is more consistent with our knowledge of the matter and the data we have in hand. We have modeled lower counts in the contralateral hemisphere with an augmented probability (~ 75%) of seeing zeros as an outcome. Thus, our estimates have change, and I judge are now more precise. Let's see the summary:
+
+```{r}
+#| label: HurdleFit_Results2
+#| include: true
+#| warning: false
+#| message: false
+#| results: false
+
+summary(Hurdle_Fit2)
+
+```
+Definitively, we have a new picture. Although the estimates for the number of cells are similar, the "hu" parameters (in the logit scale) tells us that the probability for seeing zeros in the contralateral hemisphere is:
+
+$$
+\text{Probability} = \frac{1}{1 + \exp(-1.34)} \approx 0.792 
+$$
+Indicating that there is approximately a 79.2% probability of observing zero counts in the reference hemisphere.
+
+Conversely 
+
+$$
+\text{Probability} = \frac{1}{1 + \exp(6.04)} \approx 0.0023 
+$$
+Indicates a drastic reduction to about 0.23% probability of observing zero cell counts in the injured (ipsilateral) hemisphere. This is a substantial change in our estimates.
+
+Now, let's see if a `zero_inflated_poisson()` distribution family change our conclusions. 
+
+VOY AQUÍ
+
+# Fitting a zero inflated possion model
+
+Let's start by using the `Zero_inflated_poisson` distribution in our modeling scheme: 
 
 ```{r}
 #| label: OrdinalFit
@@ -211,19 +410,19 @@ We fit the `cumulative` model by following the usual formula syntax and adding `
 #| message: false
 #| results: false
 
-Ordinal_Fit <- brm(Response ~ Group, 
-           data = df, 
-           family = cumulative("probit"),
+Inflated_Fit1 <- brm(Cells ~ Hemisphere, 
+           data = Svz_data, 
+           family = zero_inflated_poisson(),
            # seed for reproducibility purposes
            seed = 8807,
            control = list(adapt_delta = 0.99),
            # this is to save the model in my laptop
-           file    = "Models/2024-04-03_UseAndAbuseANOVA/Ordinal_Fit.rds",
+           file    = "Models/2024-04-19_CountsZeroInflated/Inflated_Fit.rds",
            file_refit = "never")
 
 # Add loo for model comparison
-Ordinal_Fit <- 
-  add_criterion(Ordinal_Fit, c("loo", "waic", "bayes_R2"))
+Inflated_Fit1 <- 
+  add_criterion(Inflated_Fit1, c("loo", "waic", "bayes_R2"))
 ```
 
 Before we look at the results, let's do some model diagnostics to compare the observations and the model predictions.

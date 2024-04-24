@@ -65,6 +65,12 @@ library(patchwork)
 library(tibble)
 library(tidybayes)
 
+logit2prob <- function(logit){
+  odds <- exp(logit)
+  prob <- odds / (1 + odds)
+  return(prob)
+}
+
 Plot_theme <- theme_classic() +
   theme(
       plot.title = element_text(size=18, hjust = 0.5, face="bold"),
@@ -305,6 +311,8 @@ pp_check(Hurdle_Fit1, ndraws = 100) +
 
 As expected, our model predictions have a lower boundary at 0. 
 
+## Modeling the dispersion of the data
+
 Now, looking at the right graph in @fig-HurdleCE we see something that does not align with out knowledge of the subject. We now that the probability of having non-zero cunts in the SVZ of the ipsilateral hemisphere should be higher than in the contralateral. Our knowledge of the subject indicates that after an injury, the SVZ of the injured hemisphere (ipsilateral) becomes a cradle of cells where cell proliferation is abundant.As we saw in cell counts, in this region all counts are different from zero.This is one way in which scientific knowledge guides our statistical inferences. It is impractical to perform t-tests and ANOVAS without any consideration.So, can we build a more accurate model? I bet we can, and we do so by modeling also the "hu" part of the model:
 
 ```{r}
@@ -369,7 +377,7 @@ Hurdle_hu <- Hurdle_CE_hu +
 Hurdle_Com | Hurdle_hu
 ```
 
-I truly believe this model is more consistent with our knowledge of the matter and the data we have in hand. We have modeled lower counts in the contralateral hemisphere with an augmented probability (~ 75%) of seeing zeros as an outcome. Thus, our estimates have change, and I judge are now more precise. Let's see the summary:
+I truly believe this model is more consistent with our knowledge of the matter and the data we have in hand. We have modeled lower counts in the contralateral hemisphere with an augmented probability (~ 75%) of seeing zeros as an outcome. Thus, our estimates have change, and I judge are now more precise. Let's see the summary and the conversion FOR THE `hu` parameters (do not look the others) to the probability scale using the `logit2prob` [function](https://sebastiansauer.github.io/convert_logit2prob/) we created at the beginning.   
 
 ```{r}
 #| label: HurdleFit_Results2
@@ -380,6 +388,7 @@ I truly believe this model is more consistent with our knowledge of the matter a
 
 summary(Hurdle_Fit2)
 
+logit2prob(fixef(Hurdle_Fit2))
 ```
 Definitively, we have a new picture. Although the estimates for the number of cells are similar, the "hu" parameters (in the logit scale) tells us that the probability for seeing zeros in the contralateral hemisphere is:
 
@@ -397,20 +406,24 @@ Indicates a drastic reduction to about 0.23% probability of observing zero cell 
 
 Now, let's see if a `zero_inflated_poisson()` distribution family change our conclusions. 
 
-VOY AQUÍ
 
 # Fitting a zero inflated possion model
 
-Let's start by using the `Zero_inflated_poisson` distribution in our modeling scheme: 
+As we saw the variations between ipsilateral and the contralateral hemispheres in our previous model, we'll model as well the two parts of the `zero_inflated_poisson()`: The count part (with a "log" link) and the excess of zeros (with a "logit" link).
 
 ```{r}
-#| label: OrdinalFit
+#| label: InflatedFit
 #| include: true
 #| warning: false
 #| message: false
 #| results: false
 
-Inflated_Fit1 <- brm(Cells ~ Hemisphere, 
+
+Inflated_mdl1 <- bf(Cells ~ Hemisphere,
+                    zi ~ Hemisphere)
+
+Inflated_Fit1 <- brm(
+           formula = Inflated_mdl1, 
            data = Svz_data, 
            family = zero_inflated_poisson(),
            # seed for reproducibility purposes
@@ -424,13 +437,12 @@ Inflated_Fit1 <- brm(Cells ~ Hemisphere,
 Inflated_Fit1 <- 
   add_criterion(Inflated_Fit1, c("loo", "waic", "bayes_R2"))
 ```
-
-Before we look at the results, let's do some model diagnostics to compare the observations and the model predictions.
+Before we look at the results, let's carry out some basic diagnostics to compare the observations and the model predictions.
 
 ## Model diagnostics
 
 ```{r}
-#| label: fig-OrdinalDiag1
+#| label: fig-ZeroInflatedDiag1
 #| include: true
 #| warning: false
 #| message: false
@@ -440,167 +452,80 @@ Before we look at the results, let's do some model diagnostics to compare the ob
 
 set.seed(8807)
 
-pp_check(Ordinal_Fit, ndraws = 100) +
-  labs(title = "Ordinal regression") +
+pp_check(Inflated_Fit1, ndraws = 100) +
+  labs(title = "Zero-inflated regression") +
   theme_classic()
 ```
 
-From @fig-OrdinalDiag1, I speculate that the uneven distribution (variance) of scores across groups may cause such deviations. Later, we'll see if predicting the variance yields better estimates. For now, we are good to go.
+From @fig-ZeroInflatedDiag1, we can see that the predictions deviate from the observed data in a similar way. Thus, we have no major changes up to this point.
 
-## Checking the results for the ordinal regression
-
-Let's take a look at the posterior distribution using the `describe_posterior` function from the `bayestestR` package [@bayestestR], as an alternative to the typical `summary` function.
+## Model results
 
 ```{r}
-#| label: Student_Posterior
-#| include: true
-#| warning: false
-#| message: false
-
-describe_posterior(Ordinal_Fit,
-                   centrality = "mean",
-                   dispersion = TRUE,
-                   ci_method = "HDI",
-                   test = "rope",
-                   )
-```
-
-The thresholds (score thresholds) are labeled as "intercepts" in this model, which apply to our baseline "sham" condition. The coefficients for GrouptMCAO and GrouptMCAO_C indicate the difference from sham animals on the latent Y˜ scale. Thus, we see that GrouptMCAO has 8.6 standard deviations higher scores on the latent Y˜ scale.
-
-I want to point out a crucial (and not trivial) aspect here as a reminder for a future post (stay tuned). In my opinion, it is irrelevant to make comparisons between a group that does not have a distribution (which is 0 in all cases), such as the sham group, and a group that does have a distribution (the experimental groups). If you think about it carefully, the purpose of this procedure is null. But let us follow the thread of modern scientific culture and not think too much about it.
-
-Of course, appreciating the difference between the groups becomes more feasible if we look at it visually with the `conditional effects' function of`brms'.
-
-```{r}
-#| label: fig-OrdinalEff
-#| include: true
-#| warning: false
-#| message: false
-#| fig-cap: Conditional effects for the Ordinal model
-#| fig-height: 5
-#| fig-width: 7
-
-
-Ordinal_CondEffects <- 
-  conditional_effects(Ordinal_Fit, "Group", categorical = TRUE)
-
-Ordinal_CondEffects <- plot(Ordinal_CondEffects, 
-       plot = FALSE)[[1]]
-
-Ordinal_CondEffects + 
-  Plot_theme +
-  theme(legend.position = "bottom", legend.direction = "horizontal")
-```
-
-Curiously (or perhaps not so much from the MCMC simulation framework), the model estimates that the dummy group can have values of 1, although we have not seen this in the data. The reason is no doubt that the model estimates a common variance for all groups. We will see if this changes if our model also includes the variance as a response.
-
-Otherwise, the estimates we obtain for the tMCAO and tMCO_C groups are much closer to the data. This allows us to make more precise statements instead of running an ANOVA (incorrectly for ordinal variables) and saying that there is "a significant difference" between one group and the other, which is the same as saying nothing. For example, the model tells us that scores of 2-4 for the tMCAO group have a very similar probability (about 25%). The case is different for the tMCAO_C group, where the probability of 2 in the neurological score is higher (with considerable uncertainty) than for the other scores. If I were confronted with this data set and this model, I would claim that the probability that the tMCAO_C group reflects less neurological damage (based on scores 1 and 2) is higher than for the tMCAO group.
-
-Can we get precise numbers that quantify the differences between the scores of the different groups and their uncertainty? Of course we can! using the `emmeans` package [@emmeans]. But that will be the subject of another post (stay tuned).
-
-# Including the variance as a response variable
-
-For this type of cumulative model, there is no `sigma` parameter. Instead, to account for unequal variances, we need to use a parameter called `disc`. For more on this aspect, see the Ordinal Regression tutorial by Paul-Christian Bürkner, the creator of `brms` [@bürkner2019].
-
-```{r}
-#| label: OrdinalFit_Sigma
+#| label: HurdleFit_Results
 #| include: true
 #| warning: false
 #| message: false
 #| results: false
 
-Ordinal_Mdl2 <- bf (Response ~ Group) +
-                     lf(disc ~  0 + Group, cmc = FALSE)
+summary(Inflated_Fit1)
 
-Ordinal_Fit2 <- brm( 
-           formula = Ordinal_Mdl2,
-           data = df, 
-           family = cumulative("probit"),
-           # seed for reproducibility purposes
-           seed = 8807,
-           control = list(adapt_delta = 0.99),
-           # this is to save the model in my laptop
-           file    = "Models/2024-04-03_UseAndAbuseANOVA/Ordinal_Fit2.rds",
-           file_refit = "never")
+logit2prob(fixef(Inflated_Fit1))
 
-# Add loo for model comparison
-Ordinal_Fit2 <- 
-  add_criterion(Ordinal_Fit2, c("loo", "waic", "bayes_R2"))
 ```
+Well, we do see tiny changes in the estimations. The estimate for the number of cells is similar with a tiny variations in the credible intervals. The parameter for the number of zeros seem to experience a larger shift. Let-s see if it has some effect in our conclusions:
 
-## Model diagnostics
+$$
+\text{Probability} = \frac{1}{1 + \exp(1.21)} \approx 0.771 
+$$
+Indicating that there is approximately a 77% probability of observing zero counts in the reference hemisphere. Now, for the injured hemisphere we have>
 
-We perform the model diagnostics as done previously:
+$$
+\text{Probability} = \frac{1}{1 + \exp(5.88)} \approx 0.0027 
+$$
+Indicating again a drastic reduction of observing zero cell counts in the injured (ipsilateral) hemisphere. Evaluating the results using scientific knowledge, I would say that both models provide similar sound predictions. The graphical results for our zero inflated model is as follows:
+
+## Model plots
 
 ```{r}
-#| label: fig-OrdinalDiag2
+#| label: fig-InflatedCE
 #| include: true
 #| warning: false
 #| message: false
-#| fig-cap: Model diagnostics for our model predicting the variance
-#| fig-height: 4
-#| fig-width: 5
-
-set.seed(8807)
-
-pp_check(Ordinal_Fit2, ndraws = 100) +
-  labs(title = "Student-t") +
-  theme_classic()
-```
-
-@fig-OrdinalDiag2 shows that, in fact, my expectations were not met. Including the variance as a response in the model does not improve the fit of the predictions to the data. The trend is maintained, but the predictions vary significantly. Nevertheless, this is a candidate for a generative model.
-
-## Checking the results for our new model
-
-We visualize the posterior distribution for this model:
-
-```{r}
-#| label: Ordinal_Posterior2
-#| include: true
-#| warning: false
-#| message: false
-
-describe_posterior(Ordinal_Fit2,
-                   centrality = "mean",
-                   dispersion = TRUE,
-                   ci_method = "HDI",
-                   test = "rope",
-                   )
-```
-
-We can see a meaningful difference in the coefficients compared to the first model. The coefficient for "GrouptMCAO" increases from 8.6 to 15.9 and that for "GrouptMCAO_C" from 7 to 10.8. Undoubtedly, this model gives us a different picture. Otherwise, the variance term is presented under the names "disc_GrouptMCAO" and "disc_GrouptMCAO_C". We can see that both variances are very different from our "sham" baseline.
-
-Let's plot the results:
-
-```{r}
-#| label: fig-OrdinalCondEffects2
-#| include: true
-#| warning: false
-#| message: false
-#| fig-cap: Conditional effects for our model including the variance as a response
+#| fig-cap: Conditional effects for the Inflated fit.
 #| fig-height: 5
-#| fig-width: 5
-#| layout-nrow: 1
+#| fig-width: 10
 
-Ordinal_CondEffects2 <- 
-  conditional_effects(Ordinal_Fit2, categorical = TRUE)
+Inflated_CE <- 
+  conditional_effects(Inflated_Fit1)
 
-Ordinal_CondEffects2 <- plot(Ordinal_CondEffects2, 
+Inflated_CE <- plot(Inflated_CE, 
        plot = FALSE)[[1]]
 
-Ordinal_CondEffects2 +
+Inflated_Com <- Inflated_CE + 
   Plot_theme +
   theme(legend.position = "bottom", legend.direction = "horizontal")
 
+
+Inflated_CE_zi <- 
+  conditional_effects(Inflated_Fit1, dpar = "zi")
+
+Inflated_CE_zi <- plot(Inflated_CE_zi, 
+       plot = FALSE)[[1]]
+
+Inflated_zi <- Inflated_CE_zi + 
+  Plot_theme +
+  theme(legend.position = "bottom", legend.direction = "horizontal")
+
+Inflated_Com | Inflated_zi
 ```
 
-Contrary to what I expected, the model still predicts that sham animals have a small probability of scoring 1. What we have confirmed here is that this prediction is not based on the (false) assumption that all groups have the same variance. Nevertheless, it is still a logical prediction (not irracional) within this framework (ordinal regression) based on thresholds. If we go to Richard McElreath's Statistical Rethinking [@mcelreath2020k] we find the same situation with monkeys pulling levers. Fitting a more constrained model will require the use of informative priors. Leave that for a future post. I know I made three promises here, but I will keep them.
+If we compare the the hurdle model the results are very similar. However, we can observe that the estimates for the probability of 0 in the contralateral hemisphere is wider for the hurdle model. The reason is, as I exposed at the begining, that the zero inflated model located a major probability of zeros that the `hurdle_poisson` distribution. Let's compare the model to finish the lecture. 
 
-In this model, the probabilities for the different outcomes in the tMCAO group shift slightly. However, given the high uncertainty, I will not change my conclusion about the performance of this group based on this model. For the tMCAO_C group, on the other hand, the predictions do not shift in a way that is readily apparent to the eye. Let's conclude this blog post by comparing the two models.
 
 # Model comparison
 
-We do the model comparison using the the `loo` package [@loo; @vehtari2016] for leave-one-out cross validation. For an alternative approach using the WAIC criteria [@gelman2013] I suggest you read [this](https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c) post also published by Towards Data Science.
+We carry out leave-one-out cross validation using the the `loo` package [@loo; @vehtari2016]. WAIC [@gelman2013] is another approach you can explore in [this](https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c) post.
 
 ```{r}
 #| label: Models_Compare
@@ -609,14 +534,13 @@ We do the model comparison using the the `loo` package [@loo; @vehtari2016] for 
 #| message: false
 #| results: false
 
-loo(Ordinal_Fit, Ordinal_Fit2)
+loo(Hurdle_Fit2, Inflated_Fit1)
 ```
-
-Under this scheme, the models have very similar performance. In fact, the first model is slightly better for out-of-sample predictions. Accounting for variance did not help much in this particular case, where perhaps relying on informative priors can unlock the next step of scientific inference.
+The our of sample predictions are very similar. However, if we look at the "pareto-k-diagnostic", we see that the `hurdle_poisson` model has 1 `very bad` value, whereas this value goes to `bad` in the `zero_inflated_poisson()`. I will use this argument for staying with the second model and perform additional scientific inference from it. 
 
 I would appreciate your comments or feedback letting me know if this journey was useful to you. If you want more quality content on data science and other topics, you might consider becoming a [medium member](https://medium.com/membership).
 
-In the future, you can find an updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/2024-04-03_UseAndAbuseANOVA.qmd).
+In the future, you can find an updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/2024-04-19_CountsZeroInflated.qmd).
 
 -   All images, unless otherwise stated, were generated using the displayed R code.
 

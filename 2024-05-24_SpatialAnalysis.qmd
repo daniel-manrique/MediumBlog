@@ -1,7 +1,7 @@
 ---
 title-block-banner: true
-title: "Improving the analysis of object (or cells) counts  with lots of zeros"
-subtitle: "An approach using hurdle and zero-inflated models with brms"
+title: "Introduction to spatial analysis of cells for neuroscientists"
+subtitle: "An approach using point patterns analysis with spatstat"
 date: today
 date-format: full
 author: 
@@ -15,11 +15,10 @@ author:
         group: Laboratory of neurovascular interactions 
 note: "GitHub: https://daniel-manrique.github.io/"
 keywords: 
-  - zero-inflated models
-  - cell counts
-  - Bayesian modeling
-  - brms 
-   
+  - Spatial analysis
+  - Point Pattern Analysis (PPA)
+  - Spatial modeling
+  
 license: "CC BY"
 
 format:
@@ -55,65 +54,23 @@ First, let's load the necessary libraries and create a visual theme for our plot
 #| warning: false
 #| message: false
 
-library(ggplot2)
-library(brms)
-library(ggdist)
-library(easystats)
-library(dplyr)
-library(modelr)
-library(patchwork)
-library(tibble)
-library(tidybayes)
+library(spatstat)
 
-logit2prob <- function(logit){
-  odds <- exp(logit)
-  prob <- odds / (1 + odds)
-  return(prob)
-}
-
-Plot_theme <- theme_classic() +
-  theme(
-      plot.title = element_text(size=18, hjust = 0.5, face="bold"),
-      plot.subtitle = element_text(size = 10, color = "black"),
-      plot.caption = element_text(size = 12, color = "black"),
-      axis.line = element_line(colour = "black", size = 1.5, linetype = "solid"),
-      axis.ticks.length=unit(7,"pt"),
-     
-      axis.title.x = element_text(colour = "black", size = 16),
-      axis.text.x = element_text(colour = "black", size = 16, angle = 0, hjust = 0.5),
-      axis.ticks.x = element_line(colour = "black", size = 1),
-      
-      axis.title.y = element_text(colour = "black", size = 16),
-      axis.text.y = element_text(colour = "black", size = 16),
-      axis.ticks.y = element_line(colour = "black", size = 1),
-      
-      legend.position="right",
-      legend.direction="vertical",
-      legend.title = element_text(colour="black", face="bold", size=12),
-      legend.text = element_text(colour="black", size=10),
-      
-      plot.margin = margin(t = 10,  # Top margin
-                             r = 2,  # Right margin
-                             b = 10,  # Bottom margin
-                             l = 10) # Left margin
-      ) 
 ```
 
-Counting is a fundamental task in biomedical research, particularly when analyzing cell populations. Imagine staring at countless cells within a tiny brain region—sometimes numbering in the hundreds or thousands. Yet, in other areas, these numbers may dwindle to few or even none.
+As a neuroscientist, in recent years I have been interested in developing strategies that allow multimodal assessment of cell distribution in the brain. My motivation was to quantitatively understand the cellular rearrangement of neuroglia after brain injury. Along the way, I came across `spatstat`[@spatstat], a multifunctional R package for spatial analysis based on point patterns, called point pattern analysis (PPA). This approach is well developed in fields such as geography, epidemiology, or ecology, but applications to neurobiology are very limited, if not non-existent. I recently published a short protocol [@manrique-castano2024], and the reader can find a pre-print [\@manrique-castano2023](currently%20under%20revision) with a much longer and dedicated application of this approach.
 
-The challenge arises in how we analyze these counts. For large numbers, linear models, which assume a normal distribution, often serve as a reasonable approximation. Though not optimal, they provide a logical framework for initial analysis. However, the scenario shifts dramatically when cell counts are low or predominantly zeros. Here, traditional linear models (like those t-tests we run in GraphPad) falter, losing their effectiveness and relevance.
+In this post, my goal is to provide an accessible introduction to the use of this method for researchers interested in unraveling the spatial distribution of cells in different tissues, without the narrative rigidity of scientific papers.
 
-As researchers, we must strive for better, going beyond t-tests and ANOVAs. This post aims to explore alternative statistical methods that more accurately reflect the realities of our data, especially when dealing with low or zero counts. By embracing more fitted approaches, we can enhance the precision of our findings and deepen our understanding of our cell populations.
+# What is point pattern analysis (PPA)?
 
-# What is the issue with counting zeros?
+PPA is a spatial analysis technique employed to study the distribution of individual events or objects in a given area (also called observation window). This method allow researchers to examine the number of objects per unit area (called spatial intensity), whether the points are randomly distributed, clustered, or regularly spaced; and examine the variations of spatial intensity conditional on different covariants. In contrast to raw and unreproducible cell counts (i.e 100 cells/mm2), PPA maintains all the spatial information and allows multiple and reproducible handling of the point patterns. With this, researchers can identify underlying processes or structures affecting the distribution of the objects of interest. `Spatstat` is a powerful tool for PPA, enabling the visualization and statistical modeling of spatial point data.
 
-In many studies, like the one shown in the graph by [@baraibar2020], we encounter the challenge of low cell counts, particularly where one group—marked here in black—appears to be dominated by zero counts. This scenario is not uncommon in biomedical literature, where straightforward linear models are frequently applied to analyze such data.
+# Requirements for PPA
 
-![CD3+ cells by Baraibar et. al (2020) (CC-BY)](Plots/2024-04-19_CountsZeroInflated/CoutingZeros.png){#fig-sample fig-align="center"}
+The single requirement to perform PPA is having xy coordinates of single objects (cells, proteins, subcellular structures, etc). In this post, we focus on 2D PPA although 3D approaches are also available. Then, this coordinates are handled with R and spatstat function to create point patterns and store them as hyperframes.
 
-However, the use of these models in cases of low or zero counts can be problematic. Without access to the original datasets—which researchers often do not share—it's difficult to evaluate the efficacy of the analysis fully. To better understand this issue, let's consider a separate dataset from my own research. Several years ago, I undertook the task of counting BrdU+ cells following an ischemic event in a specific brain area called the subventricular zone (SVZ). This particular experience inclined me to evaluate more suitable statistical approaches. 
-
-These are the data:
+I have obtained the coordinates of single cells using unbiased cell detection/quantification approaches using QuPath [@bankhead2017] or CellProfiler [@stirling2021]. I note that the detection and segmentation of round/circular objects like neurons (i.e NeuN) is easier compared to irregular objects like astrocytes (GFAP) or microglia (IBA1), specially when cell density is high and there is a lot of cell overlapping (like glial aggregation after brain injury). The segmentation of irregular, heavily clustered objects is still a frontier in this field. However, the Qupath or CellProfiler offer fair accuracy, and most importantly, are reproducible and can be validated. A human observer could do no better. I recommend, therefore, that you do not worry too much if in some cases you have the impression that certain objects correspond only to fragments of a cell or a combination of several cells. Fine-tune the parameters to assure that the cell detection/segmentation do the best possible job. When the cells are far enough apart (i.e. healthy brain, cell culture), there is not much to worry about. Here, you have examples of QuPath and CellProfiler pipelines to perform cell detction/segmentation. Fell free to contact me if you need futher insigts.
 
 ```{r}
 #| label: LoadData
@@ -145,7 +102,7 @@ ggplot(Svz_data, aes(x = Hemisphere, y = Cells)) +
   theme(legend.position = "top", legend.direction = "horizontal")
 ```
 
-@fig-EDA vividly illustrates the substantial disparities in cell counts across hemispheres.To examine what happens when we apply a typical (and horrific) linear model to such data, we'll proceed with a practical demonstration using the `brms`. This will help us understand the effects of these variations when analyzed under a traditional framework predicated on normal distribution assumptions. 
+@fig-EDA vividly illustrates the substantial disparities in cell counts across hemispheres.To examine what happens when we apply a typical (and horrific) linear model to such data, we'll proceed with a practical demonstration using the `brms`. This will help us understand the effects of these variations when analyzed under a traditional framework predicated on normal distribution assumptions.
 
 In this example, I'll fit a linear model where the factor variable "hemisphere" is the sole predictor of the cell counts:
 
@@ -220,17 +177,18 @@ pp_check(lm_Fit, ndraws = 100) +
   labs(title = "Gaussian regression") +
   theme_classic()
 ```
+
 Once again, we encounter irrational predictions of cell counts falling below zero. As scientists, it's crucial to reflect on the suitability of our models in relation to the data they are intended to explain. This consideration guides us toward **generative models**, which are build under the premise that they could plausibly have generated the observed data. Clearly, the linear model currently in use falls short of this criterion. It predicts impossible negative values for cell counts. Let's try to find out a better model.
 
 ## Working with lots of zeros
 
 A zero-inflated model effectively captures the nuances of datasets characterized by a preponderance of zeros. It operates by distinguishing between two distinct processes: 1) Determining whether the result is zero, and 2) predicting the values for non-zero results. This dual approach is particularly apt for asking questions like, "Are there any cells present, and if so, how many?"
 
-For handling datasets with an abundance of zeros, we employ models such as `hurdle_poisson()` and `Zero_inflated_poisson`, both designed for scenarios where standard count models like the Poisson or negative binomial models prove inadequate [@feng2021a].Loosely speaking, a key difference between `hurdle_poisson()` and `Zero_inflated_poisson` is that the latter incorporates an additional probability component specifically for zeros, enhancing their ability to handle datasets where zeros are not merely common but significant. We'll see the impact this features have in our modeling strategy using `brms`.  
+For handling datasets with an abundance of zeros, we employ models such as `hurdle_poisson()` and `Zero_inflated_poisson`, both designed for scenarios where standard count models like the Poisson or negative binomial models prove inadequate [@feng2021a].Loosely speaking, a key difference between `hurdle_poisson()` and `Zero_inflated_poisson` is that the latter incorporates an additional probability component specifically for zeros, enhancing their ability to handle datasets where zeros are not merely common but significant. We'll see the impact this features have in our modeling strategy using `brms`.
 
 # Fitting a hurdle_poisson model
 
-Let's start by using the `hurdle_poisson()` distribution in our modeling scheme: 
+Let's start by using the `hurdle_poisson()` distribution in our modeling scheme:
 
 ```{r}
 #| label: HurdleFit
@@ -253,6 +211,7 @@ Hurdle_Fit1 <- brm(Cells ~ Hemisphere,
 Hurdle_Fit1 <- 
   add_criterion(Hurdle_Fit1, c("loo", "waic", "bayes_R2"))
 ```
+
 Let's see the results using the standard summary function.
 
 ```{r}
@@ -265,11 +224,12 @@ Let's see the results using the standard summary function.
 summary(Hurdle_Fit1)
 
 ```
+
 Given this family distribution, the estimates are shown in the log scale (mu = log). In practical terms, this means that the number of cells in the contralateral subventricular zone (SVZ) can be expressed as exp(1.11) = 3.03. Similarly, the ipsilateral hemisphere is estimated to have exp(1.07) = 2.91 times the number of cells. These results align well with our expectations and offer a coherent interpretation of the cell distribution between the two hemispheres.
 
-Additionally, the `hu` parameter within the "Family Specific Parameters" sheds light on the likelihood of observing zero cell counts. It indicates a 38% probability of zero occurrences. This probability highlights the need for a zero-inflated model approach and justifies its use in our analysis. 
+Additionally, the `hu` parameter within the "Family Specific Parameters" sheds light on the likelihood of observing zero cell counts. It indicates a 38% probability of zero occurrences. This probability highlights the need for a zero-inflated model approach and justifies its use in our analysis.
 
-To better visualize the implications of these findings, we can leverage the `conditional_effects` function. This tool in the `brms` package allows us to plot the estimated effects of different predictors on the response variable, providing a clear graphical representation of how the predictors influence the expected cell counts. 
+To better visualize the implications of these findings, we can leverage the `conditional_effects` function. This tool in the `brms` package allows us to plot the estimated effects of different predictors on the response variable, providing a clear graphical representation of how the predictors influence the expected cell counts.
 
 ```{r}
 #| label: fig-HurdleCE
@@ -320,7 +280,7 @@ pp_check(Hurdle_Fit1, ndraws = 100) +
   theme_classic()
 ```
 
-As expected, our model predictions have a lower boundary at 0. 
+As expected, our model predictions have a lower boundary at 0.
 
 ## Modeling the dispersion of the data
 
@@ -392,7 +352,7 @@ Hurdle_hu <- Hurdle_CE_hu +
 Hurdle_Com | Hurdle_hu
 ```
 
-This revised modeling approach seems to be a substantial improvement. By specifically accounting for the higher probability of zero counts (~75%) in the contralateral hemisphere, the model now aligns more closely with both the observed data and our scientific knowledge. This adjustment not only reflects the expected lower cell activity in this region but also enhances the precision of our estimates. With these changes, the model now offers a more nuanced interpretation of cellular dynamics post-injury. Let's see the summary and the TRANSFORMATION FOR THE `hu` parameters (do not look the others) to visualize them in a probability scale using the `logit2prob` [function](https://sebastiansauer.github.io/convert_logit2prob/) we created at the beginning.   
+This revised modeling approach seems to be a substantial improvement. By specifically accounting for the higher probability of zero counts (\~75%) in the contralateral hemisphere, the model now aligns more closely with both the observed data and our scientific knowledge. This adjustment not only reflects the expected lower cell activity in this region but also enhances the precision of our estimates. With these changes, the model now offers a more nuanced interpretation of cellular dynamics post-injury. Let's see the summary and the TRANSFORMATION FOR THE `hu` parameters (do not look the others) to visualize them in a probability scale using the `logit2prob` [function](https://sebastiansauer.github.io/convert_logit2prob/) we created at the beginning.
 
 ```{r}
 #| label: HurdleFit_Results2
@@ -405,24 +365,22 @@ summary(Hurdle_Fit2)
 
 logit2prob(fixef(Hurdle_Fit2))
 ```
+
 Although the estimates for the number of cells are similar, the `hu` parameters (in the logit scale) tells us that the probability for seeing zeros in the contralateral hemisphere is:
 
 $$
 \text{Probability} = \frac{1}{1 + \exp(-1.34)} \approx 0.792 
-$$
-Conversely: 
+$$ Conversely:
 
 $$
 \text{Probability} = \frac{1}{1 + \exp(6.04)} \approx 0.0023 
-$$
-Depicts a drastic reduction to about 0.23% probability of observing zero cell counts in the injured (ipsilateral) hemisphere. This is a remarkable change in our estimates.
+$$ Depicts a drastic reduction to about 0.23% probability of observing zero cell counts in the injured (ipsilateral) hemisphere. This is a remarkable change in our estimates.
 
-Now, let's explore if a `zero_inflated_poisson()` distribution family changes these insights. 
-
+Now, let's explore if a `zero_inflated_poisson()` distribution family changes these insights.
 
 # Fitting a zero-inflated Poisson model
 
-As we modeled the broad variations in cell counts between the ipsilateral and contralateral hemispheres using the `hu` parameter, we'll fit as well these two parts of the model in our `zero_inflated_poisson()`. Here, the count part of the model uses a "log" link, and the excess of zeros is modeled with a "logit" link. These are linked functions associated to the distribution family that we'll not discuss here. 
+As we modeled the broad variations in cell counts between the ipsilateral and contralateral hemispheres using the `hu` parameter, we'll fit as well these two parts of the model in our `zero_inflated_poisson()`. Here, the count part of the model uses a "log" link, and the excess of zeros is modeled with a "logit" link. These are linked functions associated to the distribution family that we'll not discuss here.
 
 ```{r}
 #| label: InflatedFit
@@ -450,6 +408,7 @@ Inflated_Fit1 <- brm(
 Inflated_Fit1 <- 
   add_criterion(Inflated_Fit1, c("loo", "waic", "bayes_R2"))
 ```
+
 Before we look at the results, let's do some basic diagnostics to compare the observations and the model predictions.
 
 ## Model diagnostics
@@ -469,6 +428,7 @@ pp_check(Inflated_Fit1, ndraws = 100) +
   labs(title = "Zero-inflated regression") +
   theme_classic()
 ```
+
 From @fig-ZeroInflatedDiag1, we can see that the predictions deviate from the observed data in a similar way to the hurdle model. So, we have no major changes up to this point.
 
 ## Model results
@@ -487,17 +447,16 @@ summary(Inflated_Fit1)
 logit2prob(fixef(Inflated_Fit1))
 
 ```
+
 Here, we do see tiny changes in the estimatess. The estimate for the number of cells is similar with small changes in the credible intervals. Otherwise, the parameter for the number of zeros seems to experience a larger shift. Let's see if this has any effect on our conclusions:
 
 $$
 \text{Probability} = \frac{1}{1 + \exp(1.21)} \approx 0.771 
-$$
-Indicates that there is approximately a 77% probability of observing zero counts in the reference hemisphere. Now, for the injured hemisphere, we have:
+$$ Indicates that there is approximately a 77% probability of observing zero counts in the reference hemisphere. Now, for the injured hemisphere, we have:
 
 $$
 \text{Probability} = \frac{1}{1 + \exp(5.88)} \approx 0.0027 
-$$
-Again, this signals a drastic reduction in observing zero cell counts in the injured (ipsilateral) hemisphere. Evaluating the results using scientific knowledge, I would say that both models provide similarly sound predictions. The graphical results for our `zero_inflated_poisson` model are as follows:
+$$ Again, this signals a drastic reduction in observing zero cell counts in the injured (ipsilateral) hemisphere. Evaluating the results using scientific knowledge, I would say that both models provide similarly sound predictions. The graphical results for our `zero_inflated_poisson` model are as follows:
 
 ## Model plots
 
@@ -534,8 +493,7 @@ Inflated_zi <- Inflated_CE_zi +
 Inflated_Com | Inflated_zi
 ```
 
-The results seem analogous to those of the hurdle model. However, we can observe that the estimates for the probability of 0 in the contralateral hemisphere is more restrictive for the `zero_inflated_poisson`. The reason is, as I explained at the beginning, that the zero-inflated model locates a larger probability of zeros than the `hurdle_poisson` distribution. Let's compare the models to finish this post. 
-
+The results seem analogous to those of the hurdle model. However, we can observe that the estimates for the probability of 0 in the contralateral hemisphere is more restrictive for the `zero_inflated_poisson`. The reason is, as I explained at the beginning, that the zero-inflated model locates a larger probability of zeros than the `hurdle_poisson` distribution. Let's compare the models to finish this post.
 
 # Model comparison
 
@@ -550,9 +508,10 @@ We carry out leave-one-out cross validation using the the `loo` package [@loo; @
 
 loo(Hurdle_Fit2, Inflated_Fit1)
 ```
-Even though if our model predictions are alike, the "pareto-k-diagnostic" indicates that the `hurdle_poisson` model has 1 `very bad` value, whereas this value shifts to `bad` in the `zero_inflated_poisson()`. I judge that this "bad and very bad" value may be a product of the extreme observation that we see as a black dot in the contralateral count in @fig-EDA. We could fit another model excluding this value and re-evaluate the results. However, this procedure would only aim to evaluate the effect of this extreme observation and inform the audience of a possible bias in the estimates (which should be fully reported). This is a thorough and transparent way to interpret the data. I wrote another [post](https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c) concerning extreme values that may be of interest to you.  
 
-I conclude that the modeling performed in this post is a more appropriate approach than a naive linear model based on a Gaussian distribution. It is an ethical and professional responsibility of scientists to use the most appropriate statistical modeling tools available. Fortunately, `brms` exists!  
+Even though if our model predictions are alike, the "pareto-k-diagnostic" indicates that the `hurdle_poisson` model has 1 `very bad` value, whereas this value shifts to `bad` in the `zero_inflated_poisson()`. I judge that this "bad and very bad" value may be a product of the extreme observation that we see as a black dot in the contralateral count in @fig-EDA. We could fit another model excluding this value and re-evaluate the results. However, this procedure would only aim to evaluate the effect of this extreme observation and inform the audience of a possible bias in the estimates (which should be fully reported). This is a thorough and transparent way to interpret the data. I wrote another [post](https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c) concerning extreme values that may be of interest to you.
+
+I conclude that the modeling performed in this post is a more appropriate approach than a naive linear model based on a Gaussian distribution. It is an ethical and professional responsibility of scientists to use the most appropriate statistical modeling tools available. Fortunately, `brms` exists!
 
 I would appreciate your comments or feedback letting me know if this journey was useful to you. If you want more quality content on data science and other topics, you might consider becoming a [medium member](https://medium.com/membership).
 

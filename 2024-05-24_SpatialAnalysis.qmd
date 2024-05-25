@@ -1,6 +1,6 @@
 ---
 title-block-banner: true
-title: "Introduction to spatial analysis of cells for neuroscientists"
+title: "Introduction to spatial analysis of cells for neuroscientists (part 1)"
 subtitle: "An approach using point patterns analysis with spatstat"
 date: today
 date-format: full
@@ -54,11 +54,54 @@ First, let's load the necessary libraries and create a visual theme for our plot
 #| warning: false
 #| message: false
 
+library(brms)
+library(dplyr)
+library(ggplot2)
+library(gtsummary)
+library(modelr)
 library(spatstat)
+library(tidybayes)
 
 ```
 
-As a neuroscientist, in recent years I have been interested in developing strategies that allow multimodal assessment of cell distribution in the brain. My motivation was to quantitatively understand the cellular rearrangement of neuroglia after brain injury. Along the way, I came across `spatstat`[@spatstat], a multifunctional R package for spatial analysis based on point patterns, called point pattern analysis (PPA). This approach is well developed in fields such as geography, epidemiology, or ecology, but applications to neurobiology are very limited, if not non-existent. I recently published a short protocol [@manrique-castano2024], and the reader can find a pre-print [\@manrique-castano2023](currently%20under%20revision) with a much longer and dedicated application of this approach.
+We create a plot theme 
+
+```{r}
+#| label: Plot_Theme
+#| include: true
+#| warning: false
+#| message: false
+  
+Plot_theme <- theme_classic() +
+  theme(
+      plot.title = element_text(size=18, hjust = 0.5, face="bold"),
+      plot.subtitle = element_text(size = 10, color = "black"),
+      plot.caption = element_text(size = 12, color = "black"),
+      axis.line = element_line(colour = "black", size = 1.5, linetype = "solid"),
+      axis.ticks.length=unit(7,"pt"),
+     
+      axis.title.x = element_text(colour = "black", size = 16),
+      axis.text.x = element_text(colour = "black", size = 16, angle = 0, hjust = 0.5),
+      axis.ticks.x = element_line(colour = "black", size = 1),
+      
+      axis.title.y = element_text(colour = "black", size = 16),
+      axis.text.y = element_text(colour = "black", size = 16),
+      axis.ticks.y = element_line(colour = "black", size = 1),
+      
+      legend.position="right",
+      legend.direction="vertical",
+      legend.title = element_text(colour="black", face="bold", size=12),
+      legend.text = element_text(colour="black", size=10),
+      
+      plot.margin = margin(t = 10,  # Top margin
+                             r = 2,  # Right margin
+                             b = 10,  # Bottom margin
+                             l = 10) # Left margin
+      ) 
+```
+
+
+As a neuroscientist, in recent years I have been interested in developing strategies that allow multimodal assessment of cell distribution in the brain. My motivation was to quantitatively understand the cellular rearrangement of neuroglia after brain injury. Along the way, I came across `spatstat`[@spatstat], a multifunctional R package for spatial analysis based on point patterns, called point pattern analysis (PPA). This approach is well developed in fields such as geography, epidemiology, or ecology, but applications to neurobiology are very limited, if not non-existent. I recently published a short protocol [@manrique-castano2024], and the reader can find a pre-print [@manrique-castano2023](currently%20under%20revision) with a much longer and dedicated application of this approach.
 
 In this post, my goal is to provide an accessible introduction to the use of this method for researchers interested in unraveling the spatial distribution of cells in different tissues, without the narrative rigidity of scientific papers.
 
@@ -68,9 +111,16 @@ PPA is a spatial analysis technique employed to study the distribution of indivi
 
 # Requirements for PPA
 
-The single requirement to perform PPA is having xy coordinates of single objects (cells, proteins, subcellular structures, etc). In this post, we focus on 2D PPA although 3D approaches are also available. Then, this coordinates are handled with R and spatstat function to create point patterns and store them as hyperframes.
+The single requirement to perform PPA is having xy coordinates of single objects (cells, proteins, sub-cellular structures, etc). In this post, we focus on 2D PPA although 3D approaches are also available. Then, this coordinates are handled with R and spatstat function to create point patterns and store them as hyperframes.
 
-I have obtained the coordinates of single cells using unbiased cell detection/quantification approaches using QuPath [@bankhead2017] or CellProfiler [@stirling2021]. I note that the detection and segmentation of round/circular objects like neurons (i.e NeuN) is easier compared to irregular objects like astrocytes (GFAP) or microglia (IBA1), specially when cell density is high and there is a lot of cell overlapping (like glial aggregation after brain injury). The segmentation of irregular, heavily clustered objects is still a frontier in this field. However, the Qupath or CellProfiler offer fair accuracy, and most importantly, are reproducible and can be validated. A human observer could do no better. I recommend, therefore, that you do not worry too much if in some cases you have the impression that certain objects correspond only to fragments of a cell or a combination of several cells. Fine-tune the parameters to assure that the cell detection/segmentation do the best possible job. When the cells are far enough apart (i.e. healthy brain, cell culture), there is not much to worry about. Here, you have examples of QuPath and CellProfiler pipelines to perform cell detction/segmentation. Fell free to contact me if you need futher insigts.
+I have obtained the coordinates of single cells using unbiased cell detection/quantification approaches using QuPath [@bankhead2017] or CellProfiler [@stirling2021]. I note that the detection and segmentation of round/circular objects like neurons (i.e NeuN) is easier compared to irregular objects like astrocytes (GFAP) or microglia (IBA1), specially when cell density is high and there is a lot of cell overlapping (like glial aggregation after brain injury). The segmentation of irregular, heavily clustered objects is still a frontier in this field. However, the QuPath or CellProfiler offer fair accuracy, and most importantly, are reproducible and can be validated. A human observer could do no better. I recommend, therefore, that you do not worry too much if in some cases you have the impression that certain objects correspond only to fragments of a cell or a combination of several cells. Fine-tune the parameters to assure that the cell detection/segmentation do the best possible job. When the cells are far enough apart (i.e. healthy brain, cell culture), there is not much to worry about.
+
+# Creating point patterns
+
+When working with multiple samples, the creation of point patterns can be simplified using functions like the one in the following [link](https://github.com/elalilab/Stroke_PDGFR-B_Reactivity/blob/main/Widefield_5x_Ipsilateral_Gfap-Pdgfrb_Handling.qmd). The heart of this procedure is the conversion of individual .csv files containing coordinates of single cells into point patterns (using the `ppp` function from `spatstat`) and organize them in a hyperframe that can be stored and share as a .rds R object. 
+
+Here, we'll load a point pattern I have created during my research [@manrique-castano2023]. This file is available in the 
+[GitHub repository](https://github.com/daniel-manrique/MediumBlog/tree/main/Data) under the name `PointPatterns_5x.rds`. Please feel free to use it for research, educational, or training purposes. 
 
 ```{r}
 #| label: LoadData
@@ -79,54 +129,111 @@ I have obtained the coordinates of single cells using unbiased cell detection/qu
 #| message: false
 #| column: margin
 
-Svz_data <- read.csv("Data/CellCounts.csv")
-Svz_data$Hemisphere <- factor(Svz_data$Hemisphere, levels = c("Contralateral", "Ipsilateral"))
-head(Svz_data)
-```
+PointPatterns <- readRDS("Data/PointPatterns_5x.rds")
+row.names(PointPatterns) <- PointPatterns$ID 
 
-We can visualize that the contralateral hemisphere has a lot of null cell counts. We can have a better angle if we use a boxplot:
+PointPatterns
+
+```
+You see that the hyperframe contains different columns with variables. We'll start by focusing on the first three columns, which contain point patterns for three kind of brain cells: Neurons, astrocytes and micriglia. We will rewrite the other variable columns to in our way to implement PPA for research. First, let's take a look how the point patterns looks like by plotting all of them (for neurons) at the same time:
 
 ```{r}
-#| label: fig-EDA
+#| label: fig-PlotAllPatterns
 #| include: true
 #| warning: false
 #| message: false
-#| fig-cap: Cell counts by hemisphere.
+
+plot(PointPatterns$Neurons)
+```
+
+Now, let's see the details by looking at any single brain
+
+```{r}
+#| label: fig-PlotSinglePatterns
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Single point pattern.
 #| fig-height: 5
 #| fig-width: 6
 
-ggplot(Svz_data, aes(x = Hemisphere, y = Cells)) +
-  geom_boxplot() +
-  labs(x = "Hemisphere", y = "Number of cells", title = "Cells by hemisphere") +
-  Plot_theme +
-  theme(legend.position = "top", legend.direction = "horizontal")
+plot(PointPatterns$Neurons$M05)
 ```
-
-@fig-EDA vividly illustrates the substantial disparities in cell counts across hemispheres.To examine what happens when we apply a typical (and horrific) linear model to such data, we'll proceed with a practical demonstration using the `brms`. This will help us understand the effects of these variations when analyzed under a traditional framework predicated on normal distribution assumptions.
-
-In this example, I'll fit a linear model where the factor variable "hemisphere" is the sole predictor of the cell counts:
+We can play a little bit with the plots, displaying two cell types (point patterns) at the same type and changing the way (shape and color) they are plotted. Here is an example:
 
 ```{r}
-#| label: Lm_Fit
+#| label: fig-SinglePlot2
+#| include: true
+#| warning: false
+#| message: false
+#| fig-cap: Different cells types and aestetics.
+#| fig-height: 5
+#| fig-width: 6
+
+# We plot neurons in black with symbol (10)
+plot(PointPatterns$Neurons$M05, pch = 10, cex = 0.4, main = "Neurons and Astrocytes")
+
+# We add astrocytes in red with a different symbol (18)
+plot(PointPatterns$Astrocytes$M05, pch = 18, cex = 0.4, col = "red", add = TRUE)
+```
+This allows a first impression of the number and distribution of the cells, but sure, we need to quantify it. A first approach is to obtain the estimated spatial intensity for each point pattern. We can generate an additional column for each row in the hyperframe with a simple code. For the sake of this post, we do it just for astrocytes:
+
+```{r}
+#| label: CreateSpatialIntensity
 #| include: true
 #| warning: false
 #| message: false
 
-lm_Fit <- brm(Cells ~ Hemisphere, 
-           data = Svz_data, 
-           # seed for reproducibility purposes
-           seed = 8807,
-           control = list(adapt_delta = 0.99),
-           # this is to save the model in my laptop
-           file    = "Models/2024-04-19_CountsZeroInflated/lm_Fit.rds",
-           file_refit = "never")
+PointPatterns$AstrocytesIntensity <- with(PointPatterns, summary(Astrocytes)$intensity)
 
-# Add loo for model comparison
-lm_Fit <- 
-  add_criterion(lm_Fit, c("loo", "waic", "bayes_R2"))
+PointPatterns
+```
+You can see that we generated a new column containing the astrocyte spatial intensity. WE can extract that information into a data frame toguther with the grouping variables:
+
+```{r}
+#| label: CreateDataframe_Intensity
+#| include: true
+#| warning: false
+#| message: false
+
+Astrocytes_df <- as.data.frame(PointPatterns[,9:11])
+
+# We make sure to organize our factor variable in the right order
+Astrocytes_df$DPI <- factor(Astrocytes_df$DPI, levels = c("0D", "5D", "15D", "30D"))
+
+gt::gt(Astrocytes_df[1:10,])
 ```
 
-Are you willing to bet on what the results will be? Let's find out:
+This is a good start, you are able to get the number of cells per unit area in a reproducible way, using unbiased/automatic cell counting. Let's do a simple scientific inference from this data.
+
+# Fit a statistical model for the spatial intensity
+
+As customary in my blog, we use `brms` [@brms] to fit a Bayesian linear model where we investigate the Astrocyte spatial intensity conditioning on DPI, that is, the days post-ischemia (brain injury) for the animals in this data set. We'll create a model with heteroskedasticity (predicting sigma), as (I know) the variance between the DPIs is not the same. It is much smaller for 0D. 
+
+```{r}
+#| label: Astrocytes_Fit
+#| include: true
+#| warning: false
+#| message: false
+
+Astrocytes_Mdl <- bf(AstrocytesIntensity ~ DPI, 
+                     sigma ~ DPI)
+  
+Astrocytes_Fit <- brm(formula = Astrocytes_Mdl,
+                      family = student,
+                      data = Astrocytes_df, 
+                      # seed for reproducibility purposes
+                      seed = 8807,
+                      control = list(adapt_delta = 0.99),
+                      # this is to save the model in my laptop
+                      file    = "Models/2024-05-24_PPA/Astrocytes_Fit.rds",
+                      file_refit = "never")
+
+# Add loo for model comparison
+Astrocytes_Fit <- 
+  add_criterion(Astrocytes_Fit, c("loo", "waic", "bayes_R2"))
+```
+Let's look at the summary table for our model:
 
 ```{r}
 #| label: Lm_summary
@@ -134,388 +241,109 @@ Are you willing to bet on what the results will be? Let's find out:
 #| warning: false
 #| message: false
 
-summary(lm_Fit) 
+summary(Astrocytes_Fit) 
 ```
-
-If you like, you can fit a frequentist (OLS) model with `lm` and you will certainly get the same results. In these results, the intercept represents an estimate of cell counts for the contralateral hemisphere, which serves as our reference group. However, a significant inconsistency arises when employing a normal distribution for data that includes numerous zero counts or values close to zero. In such cases, the model is inappropriately "forced" to predict that cell counts in our hemisphere could be negative, such as -1 to -2 cells, with a confidence interval ranging from -1.5 to 3.7. This prediction is fundamentally flawed because it disregards the intrinsic nature of cells as entities that can only assume non-negative integer values.
-
-This issue stems from the fact that our model, in its current form, does not comprehend the true characteristics of the data it's handling. Instead, it merely follows our directives—albeit incorrectly—to fit the data to a linear model. This common oversight often leads researchers to further exacerbate the problem by applying t-tests and ANOVAs, thereby superimposing additional analysis onto a model that is fundamentally unsound. It is imperative that we, as researchers, recognize and harness our capabilities and tools to develop and utilize more appropriate and logically sound modeling methods that respect the inherent properties of our data.
+We see that animals at 0D (Intercept) have a mean spatial intensity of 4.3 with 95% credible interval (CI) between 0.73 and 2.90. That's a very low amount of cells. On the other side, we have a peak at 15D with a mean of 26.9 with CIs between 22-31. 
 
 Let's plot the results using the great `TidyBayes` package [@tidybayes] by the great [Matthew Kay](https://www.mjskay.com/)
 
 ```{r}
-#| label: fig-LmResults
+#| label: fig-AstrocytesResults
 #| include: true
 #| warning: false
 #| message: false
-#| fig-cap: Posterior distribution for cells counts by hemisphere.
+#| fig-cap: Posterior distribution for the spatial intensity of astrocytes.
 #| fig-height: 5
 #| fig-width: 6
 
-Svz_data %>%
-  data_grid(Hemisphere) %>%
-  add_epred_draws(lm_Fit) %>%
-  ggplot(aes(x = .epred, y = Hemisphere)) +
-  labs(x = "Number of cells") +
+Astrocytes_df %>%
+  data_grid(Astrocytes_df) %>%
+  add_epred_draws(Astrocytes_Fit) %>%
+  ggplot(aes(x = .epred, y = DPI)) +
+  labs(x = "Spatial intensity") +
   stat_halfeye() +
   geom_vline(xintercept = 0) +
   Plot_theme
 ```
 
-We can also see this inconsistency if we perform `pp_check` to compare the observations with the model predictions:
+`stat_halfeye()` is an appealing way of looking at the results. This procedure is analogous to counting cells in a given area. The advantage of PPA is that you do not need to trust on the supposed visual acuity of a student counting cells (the supposed experts are not the ones counting them) but can produce unbiased cell counting which can be validated and are reproducible and reusable. Definitively, we can do a lot more with PPA.
 
-```{r}
-#| label: fig-Lm_ppchek
-#| include: true
-#| warning: false
-#| message: false
-#| fig-cap: Posterior predictive checks gaussian model.
-#| fig-height: 5
-#| fig-width: 6
+# Creating density kernels
 
-pp_check(lm_Fit, ndraws = 100) +
-  labs(title = "Gaussian regression") +
-  theme_classic()
-```
+We have density kernels available in the loaded point patterns, but we'll rewrite them for the purposes of this post. A density kernel, is a method to estimate the probability density function of a variable, in this case, position of cells. This provides a smooth estimate of the intensity function that generated the observed data. 
 
-Once again, we encounter irrational predictions of cell counts falling below zero. As scientists, it's crucial to reflect on the suitability of our models in relation to the data they are intended to explain. This consideration guides us toward **generative models**, which are build under the premise that they could plausibly have generated the observed data. Clearly, the linear model currently in use falls short of this criterion. It predicts impossible negative values for cell counts. Let's try to find out a better model.
-
-## Working with lots of zeros
-
-A zero-inflated model effectively captures the nuances of datasets characterized by a preponderance of zeros. It operates by distinguishing between two distinct processes: 1) Determining whether the result is zero, and 2) predicting the values for non-zero results. This dual approach is particularly apt for asking questions like, "Are there any cells present, and if so, how many?"
-
-For handling datasets with an abundance of zeros, we employ models such as `hurdle_poisson()` and `Zero_inflated_poisson`, both designed for scenarios where standard count models like the Poisson or negative binomial models prove inadequate [@feng2021a].Loosely speaking, a key difference between `hurdle_poisson()` and `Zero_inflated_poisson` is that the latter incorporates an additional probability component specifically for zeros, enhancing their ability to handle datasets where zeros are not merely common but significant. We'll see the impact this features have in our modeling strategy using `brms`.
-
-# Fitting a hurdle_poisson model
-
-Let's start by using the `hurdle_poisson()` distribution in our modeling scheme:
-
-```{r}
-#| label: HurdleFit
-#| include: true
-#| warning: false
-#| message: false
-#| results: false
-
-Hurdle_Fit1 <- brm(Cells ~ Hemisphere, 
-           data = Svz_data, 
-           family = hurdle_poisson(),
-           # seed for reproducibility purposes
-           seed = 8807,
-           control = list(adapt_delta = 0.99),
-           # this is to save the model in my laptop
-           file    = "Models/2024-04-19_CountsZeroInflated/Hurdle_Fit1.rds",
-           file_refit = "never")
-
-# Add loo for model comparison
-Hurdle_Fit1 <- 
-  add_criterion(Hurdle_Fit1, c("loo", "waic", "bayes_R2"))
-```
-
-Let's see the results using the standard summary function.
-
-```{r}
-#| label: HurdleFit_Results
-#| include: true
-#| warning: false
-#| message: false
-#| results: false
-
-summary(Hurdle_Fit1)
-
-```
-
-Given this family distribution, the estimates are shown in the log scale (mu = log). In practical terms, this means that the number of cells in the contralateral subventricular zone (SVZ) can be expressed as exp(1.11) = 3.03. Similarly, the ipsilateral hemisphere is estimated to have exp(1.07) = 2.91 times the number of cells. These results align well with our expectations and offer a coherent interpretation of the cell distribution between the two hemispheres.
-
-Additionally, the `hu` parameter within the "Family Specific Parameters" sheds light on the likelihood of observing zero cell counts. It indicates a 38% probability of zero occurrences. This probability highlights the need for a zero-inflated model approach and justifies its use in our analysis.
-
-To better visualize the implications of these findings, we can leverage the `conditional_effects` function. This tool in the `brms` package allows us to plot the estimated effects of different predictors on the response variable, providing a clear graphical representation of how the predictors influence the expected cell counts.
-
-```{r}
-#| label: fig-HurdleCE
-#| include: true
-#| warning: false
-#| message: false
-#| fig-cap: Conditional effects for the hurdle fit.
-#| fig-height: 5
-#| fig-width: 10
-
-Hurdle_CE <- 
-  conditional_effects(Hurdle_Fit1)
-
-Hurdle_CE <- plot(Hurdle_CE, 
-       plot = FALSE)[[1]]
-
-Hurdle_Com <- Hurdle_CE + 
-  Plot_theme +
-  theme(legend.position = "bottom", legend.direction = "horizontal")
-
-
-Hurdle_CE_hu <- 
-  conditional_effects(Hurdle_Fit1, dpar = "hu")
-
-Hurdle_CE_hu <- plot(Hurdle_CE_hu, 
-       plot = FALSE)[[1]]
-
-Hurdle_hu <- Hurdle_CE_hu + 
-  Plot_theme +
-  theme(legend.position = "bottom", legend.direction = "horizontal")
-
-Hurdle_Com | Hurdle_hu
-```
-
-These plots draw a more logical picture than our first model. The graph on the left shows the two parts of the model ("mu" and "hu"). Also, if this model is suitable, we should see more aligned predictions when using `pp_check`:
-
-```{r}
-#| label: fig-Hurdel_CE
-#| include: true
-#| warning: false
-#| message: false
-#| fig-cap: Posterior predictive checks hurdle model.
-#| fig-height: 5
-#| fig-width: 6
-
-pp_check(Hurdle_Fit1, ndraws = 100) +
-  labs(title = "Hurdle regression") +
-  theme_classic()
-```
-
-As expected, our model predictions have a lower boundary at 0.
-
-## Modeling the dispersion of the data
-
-Observing the data presented in the right graph of @fig-HurdleCE reveals a discrepancy between our empirical findings and our theoretical understanding of the subject. Based on established knowledge, we expect a higher probability of non-zero cell counts in the subventricular zone (SVZ) of the ipsilateral hemisphere, especially following an injury. This is because the ipsilateral SVZ typically becomes a hub of cellular activity, with significant cell proliferation post-injury. Our data, indicating prevalent non-zero counts in this region, supports this biological expectation.
-
-However, the current model predictions do not fully align with these insights. This divergence underscores the importance of incorporating scientific understanding into our statistical modeling. Relying solely on standard tests without contextual adaptation can lead to misleading conclusions.
-
-To address this, we can refine our model by specifically adjusting the `hu` parameter, which represents the probability of zero occurrences. This allows us to more accurately reflect the expected biological activity in the ipsilateral hemisphere's SVZ. We build then a second hurdle model:
-
-```{r}
-#| label: HurdleFit2
-#| include: true
-#| warning: false
-#| message: false
-#| results: false
-
-Hurdle_Mdl2 <- bf(Cells ~ Hemisphere, 
-                   hu ~ Hemisphere)
-  
-Hurdle_Fit2 <- brm(
-           formula = Hurdle_Mdl2,
-           data = Svz_data, 
-           family = hurdle_poisson(),
-           # seed for reproducibility purposes
-           seed = 8807,
-           control = list(adapt_delta = 0.99),
-           # this is to save the model in my laptop
-           file    = "Models/2024-04-19_CountsZeroInflated/Hurdle_Fit2.rds",
-           file_refit = "never")
-           
-
-# Add loo for model comparison
-Hurdle_Fit2 <- 
-  add_criterion(Hurdle_Fit2, c("loo", "waic", "bayes_R2"))
-```
-
-Let's see first if the results graph aligns with our hypothesis:
-
-```{r}
-#| label: fig-HurdleCE2
-#| include: true
-#| warning: false
-#| message: false
-#| fig-cap: Conditional effects for the hurdle fit 2.
-#| fig-height: 5
-#| fig-width: 10
-
-Hurdle_CE <- 
-  conditional_effects(Hurdle_Fit2)
-
-Hurdle_CE <- plot(Hurdle_CE, 
-       plot = FALSE)[[1]]
-
-Hurdle_Com <- Hurdle_CE + 
-  Plot_theme +
-  theme(legend.position = "bottom", legend.direction = "horizontal")
-
-
-Hurdle_CE_hu <- 
-  conditional_effects(Hurdle_Fit2, dpar = "hu")
-
-Hurdle_CE_hu <- plot(Hurdle_CE_hu, 
-       plot = FALSE)[[1]]
-
-Hurdle_hu <- Hurdle_CE_hu + 
-  Plot_theme +
-  theme(legend.position = "bottom", legend.direction = "horizontal")
-
-Hurdle_Com | Hurdle_hu
-```
-
-This revised modeling approach seems to be a substantial improvement. By specifically accounting for the higher probability of zero counts (\~75%) in the contralateral hemisphere, the model now aligns more closely with both the observed data and our scientific knowledge. This adjustment not only reflects the expected lower cell activity in this region but also enhances the precision of our estimates. With these changes, the model now offers a more nuanced interpretation of cellular dynamics post-injury. Let's see the summary and the TRANSFORMATION FOR THE `hu` parameters (do not look the others) to visualize them in a probability scale using the `logit2prob` [function](https://sebastiansauer.github.io/convert_logit2prob/) we created at the beginning.
-
-```{r}
-#| label: HurdleFit_Results2
-#| include: true
-#| warning: false
-#| message: false
-#| results: false
-
-summary(Hurdle_Fit2)
-
-logit2prob(fixef(Hurdle_Fit2))
-```
-
-Although the estimates for the number of cells are similar, the `hu` parameters (in the logit scale) tells us that the probability for seeing zeros in the contralateral hemisphere is:
+The kernel density estimation for point patterns can be formulated as follows:
 
 $$
-\text{Probability} = \frac{1}{1 + \exp(-1.34)} \approx 0.792 
-$$ Conversely:
+\hat{\lambda}(u) = \frac{1}{n}\sum_{i=1}^{n} K_h(u - x_i)
+$$ {#eq-DensityKernel}
 
-$$
-\text{Probability} = \frac{1}{1 + \exp(6.04)} \approx 0.0023 
-$$ Depicts a drastic reduction to about 0.23% probability of observing zero cell counts in the injured (ipsilateral) hemisphere. This is a remarkable change in our estimates.
+Where:
 
-Now, let's explore if a `zero_inflated_poisson()` distribution family changes these insights.
+-   $\hat{\lambda}(u)$ is the estimated intensity function at location $u$.
 
-# Fitting a zero-inflated Poisson model
+-   $n$ is the number of points.
 
-As we modeled the broad variations in cell counts between the ipsilateral and contralateral hemispheres using the `hu` parameter, we'll fit as well these two parts of the model in our `zero_inflated_poisson()`. Here, the count part of the model uses a "log" link, and the excess of zeros is modeled with a "logit" link. These are linked functions associated to the distribution family that we'll not discuss here.
+-   $x_i$ is the location of the $i$-th point.
+
+-   $K_h(u - x_i)$ is the kernel function scaled by the bandwidth $h$.
+
+We'll recreate the density kernels for astrocytes and microglia using the `density` function from `spatstat`. Please make sure this function is not overwrote by other packages. I judge that a sigma (bandwidth) of 0.2 offers a fair readout for the point pattern density. 
 
 ```{r}
-#| label: InflatedFit
+#| label: CreateKernels
 #| include: true
 #| warning: false
 #| message: false
-#| results: false
 
+PointPatterns$Astrocytes_Dens <- with(PointPatterns, density(Astrocytes, sigma = 0.2, col = topo.colors))
 
-Inflated_mdl1 <- bf(Cells ~ Hemisphere,
-                    zi ~ Hemisphere)
-
-Inflated_Fit1 <- brm(
-           formula = Inflated_mdl1, 
-           data = Svz_data, 
-           family = zero_inflated_poisson(),
-           # seed for reproducibility purposes
-           seed = 8807,
-           control = list(adapt_delta = 0.99),
-           # this is to save the model in my laptop
-           file    = "Models/2024-04-19_CountsZeroInflated/Inflated_Fit.rds",
-           file_refit = "never")
-
-# Add loo for model comparison
-Inflated_Fit1 <- 
-  add_criterion(Inflated_Fit1, c("loo", "waic", "bayes_R2"))
 ```
 
-Before we look at the results, let's do some basic diagnostics to compare the observations and the model predictions.
-
-## Model diagnostics
+With this ready, I want to offer you and example of the impact of sigma in the density kernel using a single brain
 
 ```{r}
-#| label: fig-ZeroInflatedDiag1
+#| label: SampleKernels
 #| include: true
 #| warning: false
 #| message: false
-#| fig-cap: Model diagnostics for the zero-inflated regression
-#| fig-height: 4
-#| fig-width: 5
+#| fig-cap: Density kernels with different sigma.
+#| fig-height: 6
+#| fig-width: 15
 
-set.seed(8807)
+par(mfrow = c(1,3), mar=c(1,1,1,1), oma=c(1,1,1,1))
 
-pp_check(Inflated_Fit1, ndraws = 100) +
-  labs(title = "Zero-inflated regression") +
-  theme_classic()
+plot(density(PointPatterns$Astrocytes$M05, sigma = 0.02), col = topo.colors, main = "sigma = 0.02")
+plot(density(PointPatterns$Astrocytes$M05, sigma = 0.2), col = topo.colors, main = "sigma = 0.2")
+plot(density(PointPatterns$Astrocytes$M05, sigma = 2), col = topo.colors, main = "sigma = 2")
 ```
+In the first case, we see that a very low sigma maps individual points. For sigma = 0.2, we see a mapping on a larger scale, and we can differentiate much better regions with low and high density of astrocytes. Finally, sigma = 2 offers a perspective where we cannot really discriminate with precision de different densities of astrocytes. For this case, sigma = 0.2 offer a good compromise. 
 
-From @fig-ZeroInflatedDiag1, we can see that the predictions deviate from the observed data in a similar way to the hurdle model. So, we have no major changes up to this point.
+Now, we'll fit a simple point process model to investigate the relative distribution of neurons conditioning on the astrocyte density (mapped by the density kernel).
 
-## Model results
+# Fit a point process model (ppm)
 
-Let's see the numerical results:
+Here, we use the `mppm` function from `spatstat` to fit a multiple point process model for the point patterns in our hyperframe.Unfortunately, there are not Bayesian-like functions for multiple point patterns in `spatstat`. 
 
 ```{r}
-#| label: InflatedFit_Results
+#| label: Neurons_ppm
 #| include: true
 #| warning: false
 #| message: false
-#| results: false
 
-summary(Inflated_Fit1)
+# We fit the mppm model
+Neurons_ppm <- mppm(Neurons ~ Astrocytes_Dens, data = PointPatterns)
 
-logit2prob(fixef(Inflated_Fit1))
-
+# We check the results
+summary(Neurons_ppm)
 ```
+Remember that spatial model are fitted using a Poisson distribution, which uses the log link function to obtain only positive results. This means we need to exponentiate the results in the table to convert them to the original scale. Therefore, we can grasp that the spatial intensity of neurons at a baseline (when the density of astrocytes is 0) is exp(3.54) = 34.4. This intensity decreases by ex(-0.002171358) -0.99 for each unit astrocyte spatial intensity (defined by the density kernels) increases. In other words, this model tells us that we have less neurons in points where we have more astrocytes. Noe that we are not considering DPI into the regression, an excercise you can perform to see if this estimation changes by DPI. 
 
-Here, we do see tiny changes in the estimatess. The estimate for the number of cells is similar with small changes in the credible intervals. Otherwise, the parameter for the number of zeros seems to experience a larger shift. Let's see if this has any effect on our conclusions:
-
-$$
-\text{Probability} = \frac{1}{1 + \exp(1.21)} \approx 0.771 
-$$ Indicates that there is approximately a 77% probability of observing zero counts in the reference hemisphere. Now, for the injured hemisphere, we have:
-
-$$
-\text{Probability} = \frac{1}{1 + \exp(5.88)} \approx 0.0027 
-$$ Again, this signals a drastic reduction in observing zero cell counts in the injured (ipsilateral) hemisphere. Evaluating the results using scientific knowledge, I would say that both models provide similarly sound predictions. The graphical results for our `zero_inflated_poisson` model are as follows:
-
-## Model plots
-
-```{r}
-#| label: fig-InflatedCE
-#| include: true
-#| warning: false
-#| message: false
-#| fig-cap: Conditional effects for the Inflated fit.
-#| fig-height: 5
-#| fig-width: 10
-
-Inflated_CE <- 
-  conditional_effects(Inflated_Fit1)
-
-Inflated_CE <- plot(Inflated_CE, 
-       plot = FALSE)[[1]]
-
-Inflated_Com <- Inflated_CE + 
-  Plot_theme +
-  theme(legend.position = "bottom", legend.direction = "horizontal")
-
-
-Inflated_CE_zi <- 
-  conditional_effects(Inflated_Fit1, dpar = "zi")
-
-Inflated_CE_zi <- plot(Inflated_CE_zi, 
-       plot = FALSE)[[1]]
-
-Inflated_zi <- Inflated_CE_zi + 
-  Plot_theme +
-  theme(legend.position = "bottom", legend.direction = "horizontal")
-
-Inflated_Com | Inflated_zi
-```
-
-The results seem analogous to those of the hurdle model. However, we can observe that the estimates for the probability of 0 in the contralateral hemisphere is more restrictive for the `zero_inflated_poisson`. The reason is, as I explained at the beginning, that the zero-inflated model locates a larger probability of zeros than the `hurdle_poisson` distribution. Let's compare the models to finish this post.
-
-# Model comparison
-
-We carry out leave-one-out cross validation using the the `loo` package [@loo; @vehtari2016]. WAIC [@gelman2013] is another approach you can explore in [this](https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c) post.
-
-```{r}
-#| label: Models_Compare
-#| include: true
-#| warning: false
-#| message: false
-#| results: false
-
-loo(Hurdle_Fit2, Inflated_Fit1)
-```
-
-Even though if our model predictions are alike, the "pareto-k-diagnostic" indicates that the `hurdle_poisson` model has 1 `very bad` value, whereas this value shifts to `bad` in the `zero_inflated_poisson()`. I judge that this "bad and very bad" value may be a product of the extreme observation that we see as a black dot in the contralateral count in @fig-EDA. We could fit another model excluding this value and re-evaluate the results. However, this procedure would only aim to evaluate the effect of this extreme observation and inform the audience of a possible bias in the estimates (which should be fully reported). This is a thorough and transparent way to interpret the data. I wrote another [post](https://medium.com/towards-data-science/do-not-over-think-about-outliers-use-a-student-t-distribution-instead-b6c584b91d5c) concerning extreme values that may be of interest to you.
-
-I conclude that the modeling performed in this post is a more appropriate approach than a naive linear model based on a Gaussian distribution. It is an ethical and professional responsibility of scientists to use the most appropriate statistical modeling tools available. Fortunately, `brms` exists!
+There are more aspect to explore for PPA. However, not to make this post long and heavy, I will cover them in teo next post. Here, you could get how to calculate and extract the spatial intensity of cells, create density kernels and build point process models using them. In the next post, we'll explore how to perform calculations for relative distributions and the use of raster layers to further explore the cell distribution. 
 
 I would appreciate your comments or feedback letting me know if this journey was useful to you. If you want more quality content on data science and other topics, you might consider becoming a [medium member](https://medium.com/membership).
 
-In the future, you can find an updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/2024-04-19_CountsZeroInflated.qmd).
+You can find a complete/updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/2024-04-19_CountsZeroInflated.qmd).
 
 -   All images, unless otherwise stated, were generated using the displayed R code.
 

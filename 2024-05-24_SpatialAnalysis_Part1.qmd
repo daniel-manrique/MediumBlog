@@ -101,52 +101,52 @@ Plot_theme <- theme_classic() +
 ```
 
 
-As a neuroscientist, in recent years I have been interested in developing strategies that allow multimodal assessment of cell distribution in the brain. My motivation was to quantitatively understand the cellular rearrangement of neuroglia after brain injury. Along the way, I came across `spatstat`[@spatstat], a multifunctional R package for spatial analysis based on point patterns, called point pattern analysis (PPA). This approach is well developed in fields such as geography, epidemiology, or ecology, but applications to neurobiology are very limited, if not non-existent. I recently published a short protocol [@manrique-castano2024], and the reader can find a pre-print [@manrique-castano2023](currently%20under%20revision) with a much longer and dedicated application of this approach.
+As a neuroscientist, in recent years I have been interested in developing strategies that allow multimodal assessment of cell distribution in the brain. My motivation was to quantitatively understand the cellular rearrangement of neuroglia after brain injury. Along the way, I came across `spatstat`[@spatstat], a multifunctional R package for spatial analysis based on point patterns, called point pattern analysis (PPA). This approach is well developed in fields such as geography, epidemiology, or ecology, but applications to neurobiology are very limited, if not non-existent. I recently published a short protocol [@manrique-castano2024], and the reader can find a preprint [@manrique-castano2023](currently%20under%20revision) with a much longer and dedicated application of this approach.
 
 In this post, my goal is to provide an accessible introduction to the use of this method for researchers interested in unraveling the spatial distribution of cells in different tissues, without the narrative rigidity of scientific papers.
 
 # What is point pattern analysis (PPA)?
 
-PPA is a spatial analysis technique employed to study the distribution of individual events or objects in a given area (also called observation window). This method allow researchers to examine the number of objects per unit area (called spatial intensity), whether the points are randomly distributed, clustered, or regularly spaced; and examine the variations of spatial intensity conditional on different covariants. In contrast to raw and unreproducible cell counts (i.e 100 cells/mm2), PPA maintains all the spatial information and allows multiple and reproducible handling of the point patterns. With this, researchers can identify underlying processes or structures affecting the distribution of the objects of interest. `Spatstat` is a powerful tool for PPA, enabling the visualization and statistical modeling of spatial point data.
+PPA is a spatial analysis technique used to study the distribution of individual events or objects in a given area (also called an observation window). This method allows researchers to examine the number of objects per unit area (called spatial intensity), whether the points are randomly distributed, clustered, or regularly spaced, and the variations in spatial intensity conditional on different covariants. Unlike raw and non-reproducible cell counts (e.g., 100 cells/mm2), PPA preserves all spatial information and allows multiple and reproducible manipulations of the point patterns. This allows researchers to identify underlying processes or structures that influence the distribution of objects of interest. 
 
 # Requirements for PPA
 
-The single requirement to perform PPA is having xy coordinates of single objects (cells, proteins, sub-cellular structures, etc). In this post, we focus on 2D PPA although 3D approaches are also available. Then, this coordinates are handled with R and spatstat function to create point patterns and store them as hyperframes.
+The only requirement to perform PPA is to have xy coordinates of single objects (cells, proteins, subcellular structures, etc.). In this article, we focus on 2D PPA, although 3D approaches are also available. These coordinates are then processed using R and the spatstat function to create point patterns and store them as hyperframes.
 
-I have obtained the coordinates of single cells using unbiased cell detection/quantification approaches using QuPath [@bankhead2017] or CellProfiler [@stirling2021]. I note that the detection and segmentation of round/circular objects like neurons (i.e NeuN) is easier compared to irregular objects like astrocytes (GFAP) or microglia (IBA1), specially when cell density is high and there is a lot of cell overlapping (like glial aggregation after brain injury). The segmentation of irregular, heavily clustered objects is still a frontier in this field. However, the QuPath or CellProfiler offer fair accuracy, and most importantly, are reproducible and can be validated. A human observer could do no better. I recommend, therefore, that you do not worry too much if in some cases you have the impression that certain objects correspond only to fragments of a cell or a combination of several cells. Fine-tune the parameters to assure that the cell detection/segmentation do the best possible job. When the cells are far enough apart (i.e. healthy brain, cell culture), there is not much to worry about.
+I obtained the coordinates of individual cells using unbiased cell detection/quantification approaches using QuPath [@bankhead2017] or CellProfiler [@stirling2021]. I find that the detection and segmentation of round/circular objects like neurons (e.g. NeuN) is easier compared to irregular objects like astrocytes (GFAP) or microglia (IBA1), especially when cell density is high and there is a lot of cell overlap (e.g. glial aggregation after brain injury). The segmentation of irregular, highly clustered objects is still a frontier in this field. However, the QuPath or CellProfiler provide reasonable accuracy and, most importantly, are reproducible and can be validated. A human observer could not do better. Therefore, I recommend not to worry too much if in some cases you get the impression that certain objects only correspond to fragments of a cell or a combination of several cells. Fine-tune the parameters to ensure that the cell detection/segmentation does the best job possible. If the cells are far enough apart (e.g. healthy brain, cell culture), there is not much to worry about.
 
 # Creating point patterns
 
-When working with multiple samples, the creation of point patterns can be simplified using functions like the one in the following [link](https://github.com/elalilab/Stroke_PDGFR-B_Reactivity/blob/main/Widefield_5x_Ipsilateral_Gfap-Pdgfrb_Handling.qmd). The heart of this procedure is the conversion of individual .csv files containing coordinates of single cells into point patterns (using the `ppp` function from `spatstat`) and organize them in a hyperframe that can be stored and share as a .rds R object. 
+When working with multiple samples, the creation of point patterns can be simplified by using functions like the following [link](https://github.com/elalilab/Stroke_PDGFR-B_Reactivity/blob/main/Widefield_5x_Ipsilateral_Gfap-Pdgfrb_Handling.qmd). The core of this procedure is to convert individual .csv files containing single cell coordinates into point patterns (using the `ppp` function of `spatstat`) and organize them into a hyperframe that can be saved and shared as a .rds R object. 
 
 Here, we'll load a point pattern I have created during my research [@manrique-castano2023]. This file is available in the 
-[GitHub repository](https://github.com/daniel-manrique/MediumBlog/tree/main/Data) under the name `PointPatterns_5x.rds`. Please feel free to use it for research, educational, or training purposes. 
+[GitHub repository](https://github.com/daniel-manrique/MediumBlog/tree/main/Data) under the name `PointPatterns_5x.rds`. Please feel free to use it for research, education, or training purposes. 
 
 ```{r}
 #| label: LoadData
 #| include: true
 #| warning: false
 #| message: false
-#| column: margin
 
 PointPatterns <- readRDS("Data/PointPatterns_5x.rds")
 row.names(PointPatterns) <- PointPatterns$ID 
 
-PointPatterns
-
+head(PointPatterns)
 ```
-You see that the hyperframe contains different columns with variables. We'll start by focusing on the first three columns, which contain point patterns for three kind of brain cells: Neurons, astrocytes and micriglia. We will rewrite the other variable columns to in our way to implement PPA for research. First, let's take a look how the point patterns looks like by plotting all of them (for neurons) at the same time:
+You can see that the hyperframe contains several columns of variables. Let's focus on the first three columns, which contain point patterns for three types of brain cells: Neurons, Astrocytes, and Microglia. We will rewrite some variable columns in our own way to exercise the implementation of PPA. First, let's take a look at what the point patterns look like by plotting them all at once (for neurons):
 
 ```{r}
 #| label: fig-PlotAllPatterns
 #| include: true
 #| warning: false
 #| message: false
+#| fig-cap: Multiple point patterns.
+#| fig-height: 40
+#| fig-width: 20
 
 plot(PointPatterns$Neurons)
 ```
-
-Now, let's see the details by looking at any single brain
+Let's see the details by looking at any single brain:
 
 ```{r}
 #| label: fig-PlotSinglePatterns
@@ -159,7 +159,7 @@ Now, let's see the details by looking at any single brain
 
 plot(PointPatterns$Neurons$M05)
 ```
-We can play a little bit with the plots, displaying two cell types (point patterns) at the same type and changing the way (shape and color) they are plotted. Here is an example:
+We can play a little bit with the plots, by displaying two cell types (point patterns) at the same type and changing the way (shape and color) they are plotted. Here is an example:
 
 ```{r}
 #| label: fig-SinglePlot2
@@ -176,7 +176,7 @@ plot(PointPatterns$Neurons$M05, pch = 10, cex = 0.4, main = "Neurons and Astrocy
 # We add astrocytes in red with a different symbol (18)
 plot(PointPatterns$Astrocytes$M05, pch = 18, cex = 0.4, col = "red", add = TRUE)
 ```
-This allows a first impression of the number and distribution of the cells, but sure, we need to quantify it. A first approach is to obtain the estimated spatial intensity for each point pattern. We can generate an additional column for each row in the hyperframe with a simple code. For the sake of this post, we do it just for astrocytes:
+This gives a first impression of the number and distribution of cells, but of course we need to quantify it. A first approach is to obtain the estimated spatial intensity for each point pattern. We can generate an extra column for each row in the hyperframe with a simple code. For the sake of this post, we will do this for astrocytes only:
 
 ```{r}
 #| label: CreateSpatialIntensity
@@ -186,9 +186,9 @@ This allows a first impression of the number and distribution of the cells, but 
 
 PointPatterns$AstrocytesIntensity <- with(PointPatterns, summary(Astrocytes)$intensity)
 
-PointPatterns
+head(PointPatterns[,9:11])
 ```
-You can see that we generated a new column containing the astrocyte spatial intensity. WE can extract that information into a data frame toguther with the grouping variables:
+You can see that we have created a new column that contains the spatial intensity of astrocytes. Next, we extract the information into a data frame along with the grouping variables:
 
 ```{r}
 #| label: CreateDataframe_Intensity
@@ -204,11 +204,11 @@ Astrocytes_df$DPI <- factor(Astrocytes_df$DPI, levels = c("0D", "5D", "15D", "30
 gt::gt(Astrocytes_df[1:10,])
 ```
 
-This is a good start, you are able to get the number of cells per unit area in a reproducible way, using unbiased/automatic cell counting. Let's do a simple scientific inference from this data.
+This is a good start, you are able to get the number of cells per unit area in a reproducible way using unbiased/automatic cell counting. Let's make a simple scientific inference from this data.
 
 # Fit a statistical model for the spatial intensity
 
-As customary in my blog, we use `brms` [@brms] to fit a Bayesian linear model where we investigate the Astrocyte spatial intensity conditioning on DPI, that is, the days post-ischemia (brain injury) for the animals in this data set. We'll create a model with heteroskedasticity (predicting sigma), as (I know) the variance between the DPIs is not the same. It is much smaller for 0D. 
+As usual in my blog post, we use `brms` [@brms] to fit a Bayesian linear model where we investigate the Astrocyte spatial intensity conditioning on DPI, that is, the days post-ischemia (brain injury) for the animals in this data set. We're going to build a model with heteroscedasticity (predicting sigma) because (I know) the variance between DPIs is not equal. It is much smaller for 0D. 
 
 ```{r}
 #| label: Astrocytes_Fit
@@ -243,9 +243,9 @@ Let's look at the summary table for our model:
 
 summary(Astrocytes_Fit) 
 ```
-We see that animals at 0D (Intercept) have a mean spatial intensity of 4.3 with 95% credible interval (CI) between 0.73 and 2.90. That's a very low amount of cells. On the other side, we have a peak at 15D with a mean of 26.9 with CIs between 22-31. 
+We see that animals at 0D (intercept) have a mean spatial intensity of 4.3 with a 95% credible interval (CI) between 0.73 and 2.90. That's a very small number of cells. On the other hand, we have a peak at 15D with a mean of 26.9 with CIs between 22 and 31. 
 
-Let's plot the results using the great `TidyBayes` package [@tidybayes] by the great [Matthew Kay](https://www.mjskay.com/)
+Let's plot the results using the great `TidyBayes` package [@tidybayes] from the great [Matthew Kay](https://www.mjskay.com/)
 
 ```{r}
 #| label: fig-AstrocytesResults
@@ -266,13 +266,13 @@ Astrocytes_df %>%
   Plot_theme
 ```
 
-`stat_halfeye()` is an appealing way of looking at the results. This procedure is analogous to counting cells in a given area. The advantage of PPA is that you do not need to trust on the supposed visual acuity of a student counting cells (the supposed experts are not the ones counting them) but can produce unbiased cell counting which can be validated and are reproducible and reusable. Definitively, we can do a lot more with PPA.
+`stat_halfeye()`from @fig-AstrocytesResults is a nice way to look at the results. This procedure is analogous to counting cells in a given area. The advantage of PPA is that you do not have to rely on the supposed visual acuity of a student counting cells (the supposed experts are not the ones counting them), but you can produce unbiased cell counts that can be validated and are reproducible and reusable. Clearly, dear reader, we can do much more with PPA.
 
 # Creating density kernels
 
-We have density kernels available in the loaded point patterns, but we'll rewrite them for the purposes of this post. A density kernel, is a method to estimate the probability density function of a variable, in this case, position of cells. This provides a smooth estimate of the intensity function that generated the observed data. 
+We have density kernels available in the loaded point patterns, but we'll rewrite them for the purposes of this post. A density kernel is a method of estimating the probability density function of a variable, in this case the location of cells. This provides a smooth estimate of the intensity function that produced the observed data. 
 
-The kernel density estimation for point patterns can be formulated as follows:
+Kernel density estimation for point patterns can be formulated as follows
 
 $$
 \hat{\lambda}(u) = \frac{1}{n}\sum_{i=1}^{n} K_h(u - x_i)
@@ -288,7 +288,7 @@ Where:
 
 -   $K_h(u - x_i)$ is the kernel function scaled by the bandwidth $h$.
 
-We'll recreate the density kernels for astrocytes and microglia using the `density` function from `spatstat`. Please make sure this function is not overwrote by other packages. I judge that a sigma (bandwidth) of 0.2 offers a fair readout for the point pattern density. 
+We'll recreate the density kernels for astrocytes and microglia using the `density` function from `spatstat`. Please make sure that this function is not overwritten by other packages. I find that a sigma (bandwidth) of 0.2 gives a fair readout for the point pattern density. 
 
 ```{r}
 #| label: CreateKernels
@@ -300,10 +300,10 @@ PointPatterns$Astrocytes_Dens <- with(PointPatterns, density(Astrocytes, sigma =
 
 ```
 
-With this ready, I want to offer you and example of the impact of sigma in the density kernel using a single brain
+With this ready, I want to give you an example of the impact of sigma in the density kernel using a single brain:
 
 ```{r}
-#| label: SampleKernels
+#| label: fig-SampleKernels
 #| include: true
 #| warning: false
 #| message: false
@@ -317,13 +317,13 @@ plot(density(PointPatterns$Astrocytes$M05, sigma = 0.02), col = topo.colors, mai
 plot(density(PointPatterns$Astrocytes$M05, sigma = 0.2), col = topo.colors, main = "sigma = 0.2")
 plot(density(PointPatterns$Astrocytes$M05, sigma = 2), col = topo.colors, main = "sigma = 2")
 ```
-In the first case, we see that a very low sigma maps individual points. For sigma = 0.2, we see a mapping on a larger scale, and we can differentiate much better regions with low and high density of astrocytes. Finally, sigma = 2 offers a perspective where we cannot really discriminate with precision de different densities of astrocytes. For this case, sigma = 0.2 offer a good compromise. 
+@fig-SampleKernels shows that, in the first case, we see that a very low sigma maps single points. For sigma = 0.2, we see a mapping on a larger scale and we can distinguish much better regions with low and high density of astrocytes. Finally, sigma = 2 offers a perspective where we cannot really distinguish with precision the different densities of astrocytes. For this case, sigma = 0.2 is a good compromise. 
 
-Now, we'll fit a simple point process model to investigate the relative distribution of neurons conditioning on the astrocyte density (mapped by the density kernel).
+Now we'll fit a simple point process model to investigate the relative distribution of neurons conditioning on astrocyte density (mapped by the density kernel).
 
 # Fit a point process model (ppm)
 
-Here, we use the `mppm` function from `spatstat` to fit a multiple point process model for the point patterns in our hyperframe.Unfortunately, there are not Bayesian-like functions for multiple point patterns in `spatstat`. 
+Here, we use the `mppm` function from `spatstat` to fit a multiple point process model for the point patterns in our hyperframe.Unfortunately, there are no Bayesian-like functions for multiple point patterns in `spatstat`. 
 
 ```{r}
 #| label: Neurons_ppm
@@ -337,13 +337,13 @@ Neurons_ppm <- mppm(Neurons ~ Astrocytes_Dens, data = PointPatterns)
 # We check the results
 summary(Neurons_ppm)
 ```
-Remember that spatial model are fitted using a Poisson distribution, which uses the log link function to obtain only positive results. This means we need to exponentiate the results in the table to convert them to the original scale. Therefore, we can grasp that the spatial intensity of neurons at a baseline (when the density of astrocytes is 0) is exp(3.54) = 34.4. This intensity decreases by ex(-0.002171358) -0.99 for each unit astrocyte spatial intensity (defined by the density kernels) increases. In other words, this model tells us that we have less neurons in points where we have more astrocytes. Noe that we are not considering DPI into the regression, an exercise you can perform to see if this estimation changes by DPI. 
+Remember that spatial models are fitted with a Poisson distribution that uses the log link function to obtain only positive results. This means that we need to exponentiate the results in the table to convert them to the original scale. Therefore, we can see that the spatial intensity of neurons at a baseline (when the density of astrocytes is 0) is exp(3.54) = 34.4. This intensity decreases by ex(-0.002171358)=-0.99 for every unit increase in astrocyte spatial intensity (as defined by the density kernels). In other words, this model tells us that we have fewer neurons at points where we have more astrocytes. Note that we do not include DPI in the regression, an exercise you can do to see if this estimate changes with DPI. 
 
-There are more aspect to explore for PPA. However, not to make this post long and heavy, I will cover them in two next post. Here, you could get how to calculate and extract the spatial intensity of cells, create density kernels and build point process models using them. In the next post, we'll explore how to perform calculations for relative distributions and the use of raster layers to further explore the cell distribution. 
+There are more aspects to explore for PPA. However, not to make this post long and heavy, I will cover them in two next posts. Here you could learn how to calculate and extract the spatial intensity of cells, create density kernels and build point process models with them. In the next post, we'll explore how to perform calculations for relative distributions and how to use raster layers to further explore the cell distribution. 
 
 I would appreciate your comments or feedback letting me know if this journey was useful to you. If you want more quality content on data science and other topics, you might consider becoming a [medium member](https://medium.com/membership).
 
-You can find a complete/updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/2024-05-24_SpatialAnalysis.qmd).
+You can find a complete/updated version of this post on my [GitHub site](https://github.com/daniel-manrique/MediumBlog/blob/main/2024-05-24_SpatialAnalysis_Part1.qmd).
 
 -   All images, unless otherwise stated, were generated by the authors using R code.
 
